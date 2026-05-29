@@ -102,11 +102,15 @@ function parseJSONResponse(text) {
 async function interpretDream(dreamText, userContext = {}) {
   const prompt = PROMPTS.interpretDream + dreamText;
 
+  console.log('📤 DeepSeek prompt enviado:', dreamText.substring(0, 100));
+
   const requestFn = async () => {
     const response = await axios(buildRequest([
       { role: 'system', content: 'Você é um especialista em interpretação de sonhos com abordagem integrativa.' },
       { role: 'user', content: prompt },
     ]));
+
+    console.log('📥 DeepSeek response recebida');
 
     let result;
     if (response.data.choices && response.data.choices[0]) {
@@ -114,7 +118,7 @@ async function interpretDream(dreamText, userContext = {}) {
     }
 
     if (!result) {
-      return fallbackInterpretation(dreamText);
+      throw new Error('DeepSeek não retornou JSON válido na interpretação');
     }
 
     return {
@@ -134,8 +138,61 @@ async function interpretDream(dreamText, userContext = {}) {
 
   try {
     return await executeWithRetry(requestFn);
-  } catch {
-    return forwardToFallback(dreamText, userContext);
+  } catch (error) {
+    console.error('❌ DeepSeek error:', error.message);
+    return forwardToClaude(dreamText, userContext, error);
+  }
+}
+
+async function forwardToClaude(dreamText, userContext, originalError) {
+  const { AI_PROVIDERS: config } = require('../../config/aiProviders');
+  const fallback = config.deepseek.fallback;
+
+  if (!fallback.apiKey) {
+    console.log('⚠️ Claude fallback não disponível — CLAUDE_API_KEY ausente');
+    throw originalError;
+  }
+
+  console.log('⚠️ fallback ativado: tentando Claude...');
+
+  try {
+    const response = await axios({
+      url: fallback.url,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': fallback.apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      data: {
+        model: fallback.model,
+        max_tokens: 1000,
+        messages: [
+          { role: 'user', content: PROMPTS.interpretDream + dreamText },
+        ],
+      },
+      timeout: 30000,
+    });
+
+    if (response.data.content && response.data.content[0]) {
+      const result = parseJSONResponse(response.data.content[0].text);
+      if (result) {
+        console.log('✅ Claude fallback respondeu');
+        return {
+          interpretation: result.interpretation || '',
+          emotions: result.emotions || [],
+          spiritualMessage: result.spiritualMessage || '',
+          energy: result.energy || 'Neutra',
+          symbols: result.symbols || [],
+          numerology: null,
+        };
+      }
+    }
+
+    throw new Error('Claude não retornou JSON válido');
+  } catch (claudeError) {
+    console.error('❌ Claude fallback error:', claudeError.message);
+    throw originalError;
   }
 }
 
@@ -212,64 +269,6 @@ async function psychologicalAnalysis(dreamText, interpretation) {
   } catch {
     return '';
   }
-}
-
-function fallbackInterpretation(dreamText) {
-  const { analisarSonho } = require('../aiService');
-  return analisarSonho(dreamText);
-}
-
-async function forwardToFallback(dreamText, userContext) {
-  const { AI_PROVIDERS: config } = require('../../config/aiProviders');
-  const fallback = config.deepseek.fallback;
-
-  if (fallback.apiKey) {
-    try {
-      const response = await axios({
-        url: fallback.url,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': fallback.apiKey,
-          'anthropic-version': '2023-06-01',
-        },
-        data: {
-          model: fallback.model,
-          max_tokens: 1000,
-          messages: [
-            { role: 'user', content: PROMPTS.interpretDream + dreamText },
-          ],
-        },
-        timeout: 30000,
-      });
-
-      if (response.data.content && response.data.content[0]) {
-        const result = parseJSONResponse(response.data.content[0].text);
-        if (result) {
-          return {
-            interpretation: result.interpretation || '',
-            emotions: result.emotions || [],
-            spiritualMessage: result.spiritualMessage || '',
-            energy: result.energy || 'Neutra',
-            symbols: result.symbols || [],
-            numerology: null,
-          };
-        }
-      }
-    } catch {
-      // fallback silencioso
-    }
-  }
-
-  const mockResult = fallbackInterpretation(dreamText);
-  return {
-    interpretation: mockResult.interpretacao || '',
-    emotions: [],
-    spiritualMessage: '',
-    energy: 'Neutra',
-    symbols: [],
-    numerology: null,
-  };
 }
 
 module.exports = {

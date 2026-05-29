@@ -109,7 +109,8 @@ function generateUniqueNumbers(quantity, min, max, seed) {
 }
 
 function generateLuckyNumbers(energiaFinal) {
-  const seed = energiaFinal * 10000 + new Date().getDate() * 100 + new Date().getMonth();
+  const now = new Date();
+  const seed = energiaFinal * 10000 + now.getDate() * 100 + now.getMonth() + now.getHours();
 
   const megaSena = generateUniqueNumbers(6, 1, 60, seed);
   const quina = generateUniqueNumbers(5, 1, 80, seed + 1);
@@ -159,51 +160,27 @@ function getSpiritualMessage(energy, detectedEmotions) {
 
 function calculateDreamNumerology({ interpretacao, sunSign, moonSign, ascendant }) {
   if (!interpretacao) {
-    return createFallbackNumerology();
+    throw new Error('Interpretação necessária para calcular numerologia');
   }
 
-  try {
-    const detectedEmotions = detectEmotions(interpretacao);
-    const dreamVibration = calculateVibration(detectedEmotions);
-    const energiaFinal = calculateFinalEnergy(sunSign, moonSign, ascendant, dreamVibration);
-    const luckyNumbers = generateLuckyNumbers(energiaFinal);
-    const frequency = getFrequency(energiaFinal);
-    const chakra = getChakra(energiaFinal);
-    const planet = getPlanet(energiaFinal);
-    const spiritualMessage = getSpiritualMessage(energiaFinal, detectedEmotions);
+  const detectedEmotions = detectEmotions(interpretacao);
+  const dreamVibration = calculateVibration(detectedEmotions);
+  const energiaFinal = calculateFinalEnergy(sunSign, moonSign, ascendant, dreamVibration);
+  const luckyNumbers = generateLuckyNumbers(energiaFinal);
+  const frequency = getFrequency(energiaFinal);
+  const chakra = getChakra(energiaFinal);
+  const planet = getPlanet(energiaFinal);
+  const spiritualMessage = getSpiritualMessage(energiaFinal, detectedEmotions);
 
-    return new DreamVibration({
-      vibration: dreamVibration,
-      energy: energiaFinal,
-      frequency,
-      chakra,
-      planet,
-      detectedEmotions,
-      luckyNumbers,
-      spiritualMessage
-    });
-  } catch (error) {
-    console.error('Erro ao calcular numerologia do sonho:', error);
-    return createFallbackNumerology();
-  }
-}
-
-function createFallbackNumerology() {
   return new DreamVibration({
-    vibration: 1,
-    energy: 1,
-    frequency: '396Hz',
-    chakra: 'Raiz',
-    planet: 'Sol',
-    detectedEmotions: [],
-    luckyNumbers: {
-      megaSena: [1, 2, 3, 4, 5, 6],
-      quina: [1, 2, 3, 4, 5],
-      lotofacil: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
-      duplaSena: [1, 2, 3, 4, 5, 6],
-      timemania: { numbers: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], team: 'Flamengo' }
-    },
-    spiritualMessage: 'Confie no seu processo. Cada sonho traz uma mensagem importante para seu crescimento.'
+    vibration: dreamVibration,
+    energy: energiaFinal,
+    frequency,
+    chakra,
+    planet,
+    detectedEmotions,
+    luckyNumbers,
+    spiritualMessage
   });
 }
 
@@ -217,7 +194,6 @@ module.exports = {
   getPlanet,
   getSpiritualMessage,
   calculateDreamNumerology,
-  createFallbackNumerology,
   EMOTION_NUMBERS,
   SIGN_NUMBERS
 };

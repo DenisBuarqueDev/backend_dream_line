@@ -16,8 +16,7 @@ async function testGateway() {
 
   if (!process.env.DEEPSEEK_API_KEY && !process.env.AI_API_KEY) {
     log.push({ time: new Date().toISOString(), type: 'warning', message: '⚠️ Nenhuma API key configurada para DeepSeek ou OpenAI' });
-    log.push({ time: new Date().toISOString(), type: 'info', message: 'Testando apenas o fluxo legado (mock)...' });
-    gatewayStatus = 'fallback';
+    gatewayStatus = 'offline';
   }
 
   const testDream = 'Sonhei que estava em uma floresta escura e via uma luz ao longe. Caminhei em direção à luz e encontrei um lago cristalino.';
@@ -46,11 +45,6 @@ async function testGateway() {
     log.push({ time: new Date().toISOString(), type: 'info', message: `Interpretação: ${result.interpretation.substring(0, 150)}...` });
     log.push({ time: new Date().toISOString(), type: 'info', message: `Emoções: ${result.emotions.join(', ') || 'N/A'}` });
     log.push({ time: new Date().toISOString(), type: 'info', message: `Mensagem espiritual: ${result.spiritualMessage || 'N/A'}` });
-
-    if (result.provider === 'fallback-mock' || result.provider === 'legacy-mock') {
-      log.push({ time: new Date().toISOString(), type: 'warning', message: '⚠️ Gateway usou sistema legado (mock). Configure as API keys para usar IA real.' });
-      gatewayStatus = 'fallback';
-    }
 
     return {
       provider: 'gateway',

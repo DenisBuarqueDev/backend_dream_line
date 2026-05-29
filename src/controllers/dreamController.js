@@ -2,7 +2,6 @@ const Dream = require('../models/Dream');
 const User = require('../models/User');
 const AstralChart = require('../models/AstralChart');
 const { errorResponse, successResponse } = require('../utils/response');
-const { analisarSonho } = require('../services/aiService');
 const { calculateDreamNumerology } = require('../services/dreamNumerologyService');
 const { checkFeatureAccess } = require('../middleware/planMiddleware');
 const aiGateway = require('../services/ai/aiGatewayService');
@@ -56,45 +55,36 @@ const createDream = async (req, res, next) => {
     let aiData = null;
 
     if (!interpretacao) {
-      if (aiGateway.USE_NEW_ARCHITECTURE) {
-        try {
-          const astralChart = await AstralChart.findOne({ userId: req.userId })
-            .sort({ createdAt: -1 });
+      const astralChart = await AstralChart.findOne({ userId: req.userId })
+        .sort({ createdAt: -1 });
 
-          const userContext = astralChart
-            ? { sunSign: astralChart.sunSign, moonSign: astralChart.moonSign, ascendant: astralChart.ascendant }
-            : {};
+      const userContext = astralChart
+        ? { sunSign: astralChart.sunSign, moonSign: astralChart.moonSign, ascendant: astralChart.ascendant }
+        : {};
 
-          const pipelineResult = await aiGateway.processDreamPipeline(textoSonho, userContext, {
-            generateImage: false,
-            psychologicalAnalysis: true,
-          });
+      const pipelineResult = await aiGateway.processDreamPipeline(textoSonho, userContext, {
+        generateImage: false,
+        psychologicalAnalysis: true,
+      });
 
-          aiResult.interpretacao = pipelineResult.interpretation;
-          aiResult.categorias = pipelineResult.categorias;
-          aiResult.padroes = pipelineResult.padroes;
+      aiResult.interpretacao = pipelineResult.interpretation;
+      aiResult.categorias = pipelineResult.categorias;
+      aiResult.padroes = pipelineResult.padroes;
 
-          if (pipelineResult.emotions.length > 0 || pipelineResult.numerology || pipelineResult.spiritualMessage) {
-            aiData = {
-              transcription: null,
-              interpretation: pipelineResult.interpretation,
-              emotions: pipelineResult.emotions,
-              numerology: pipelineResult.numerology,
-              spiritualMessage: pipelineResult.spiritualMessage,
-              symbols: pipelineResult.symbols,
-              frequencies: pipelineResult.energy ? [pipelineResult.energy] : [],
-              chakra: pipelineResult.numerology?.chakra || null,
-              psychologicalAnalysis: pipelineResult.psychologicalAnalysis || null,
-              provider: pipelineResult.provider,
-              generatedAt: new Date(),
-            };
-          }
-        } catch (gatewayError) {
-          console.warn('[DreamController] AI Gateway error, falling back to legacy:', gatewayError.message);
-          aiResult = await analisarSonho(textoSonho);
-        }
-      } else {
-        aiResult = await analisarSonho(textoSonho);
+      if (pipelineResult.emotions.length > 0 || pipelineResult.numerology || pipelineResult.spiritualMessage) {
+        aiData = {
+          transcription: null,
+          interpretation: pipelineResult.interpretation,
+          emotions: pipelineResult.emotions,
+          numerology: pipelineResult.numerology,
+          spiritualMessage: pipelineResult.spiritualMessage,
+          symbols: pipelineResult.symbols,
+          frequencies: pipelineResult.energy ? [pipelineResult.energy] : [],
+          chakra: pipelineResult.numerology?.chakra || null,
+          psychologicalAnalysis: pipelineResult.psychologicalAnalysis || null,
+          provider: pipelineResult.provider,
+          generatedAt: new Date(),
+        };
       }
     }
 
@@ -241,7 +231,7 @@ const generateImage = async (req, res, next) => {
       return errorResponse(res, 'Dream not found', 404);
     }
 
-    if (!imageUrl && aiGateway.USE_NEW_ARCHITECTURE) {
+    if (!imageUrl) {
       try {
         const interpretacao = dream.aiData?.interpretation || dream.interpretacao;
         const emotions = dream.aiData?.emotions || [];
@@ -261,8 +251,6 @@ const generateImage = async (req, res, next) => {
       } catch (fluxError) {
         return errorResponse(res, `Erro na geração de imagem: ${fluxError.message}`, 500);
       }
-    } else if (!imageUrl) {
-      return errorResponse(res, 'imageUrl is required', 400);
     } else {
       dream.imageUrl = imageUrl;
       if (imagePublicId) {

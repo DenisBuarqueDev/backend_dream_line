@@ -25,22 +25,18 @@ function validateEnv() {
     }
   }
 
-  const useGateway = process.env.USE_AI_GATEWAY === 'true';
+  const hasDeepSeek = !!(process.env.DEEPSEEK_API_KEY || process.env.AI_API_KEY);
+  if (!hasDeepSeek) {
+    warnings.push('⚠️ DeepSeek: Nenhuma API key configurada (DEEPSEEK_API_KEY ou AI_API_KEY)');
+    warnings.push('   💡 A interpretação de sonhos falhará sem DeepSeek');
+  }
 
-  if (useGateway) {
-    const hasDeepSeek = !!(process.env.DEEPSEEK_API_KEY || process.env.AI_API_KEY);
-    if (!hasDeepSeek) {
-      warnings.push('⚠️ DeepSeek: Nenhuma API key configurada (DEEPSEEK_API_KEY ou AI_API_KEY)');
-      warnings.push('   💡 O gateway usará o sistema legado (mock) como fallback');
-    }
-
-    const hasGroqWhisper = !!process.env.GROQ_API_KEY;
-    if (hasGroqWhisper) {
-      warnings.push('✅ Groq Whisper: GROQ_API_KEY configurada');
-    } else {
-      warnings.push('⚠️ Groq Whisper: GROQ_API_KEY não configurada');
-      warnings.push('   💡 Transcrição de áudio via Web Speech API (navegador) será usada como fallback');
-    }
+  const hasGroqWhisper = !!process.env.GROQ_API_KEY;
+  if (hasGroqWhisper) {
+    warnings.push('✅ Groq Whisper: GROQ_API_KEY configurada');
+  } else {
+    warnings.push('⚠️ Groq Whisper: GROQ_API_KEY não configurada');
+    warnings.push('   💡 Transcrição de áudio via Web Speech API (navegador) será usada como fallback');
   }
 
   for (const { key, label, env } of AI_KEYS) {
@@ -55,7 +51,7 @@ function validateEnv() {
     for (const { key, label, env } of missingAI) {
       warnings.push(`   • ${label}: ${env}`);
     }
-    warnings.push('   💡 Nenhuma é obrigatória — o sistema funciona em modo mock sem elas');
+    warnings.push('   💡 Nenhuma é obrigatória — as funcionalidades correspondentes ficarão offline');
   }
 
   return { errors, warnings };
@@ -85,8 +81,7 @@ function logEnvStatus() {
     console.log('');
   }
 
-  const gatewayMode = process.env.USE_AI_GATEWAY === 'true' ? 'NOVA (gateway)' : 'Legado (mock)';
-  console.log(`  🤖 Modo IA: ${gatewayMode}`);
+  console.log('  🤖 Modo IA: Gateway');
   console.log('═══════════════════════════════════════');
   console.log('');
 }

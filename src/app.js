@@ -10,10 +10,16 @@ const app = express();
 
 securityMiddleware(app);
 
+const allowedOrigins = (process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
+
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*',
-  credentials: true
+  origin: allowedOrigins.length > 0 ? allowedOrigins : '*',
+  credentials: true,
 }));
+
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
@@ -36,6 +42,10 @@ app.use('/api/ai', require('./routes/aiRoutes'));
 app.use('/api/ai', require('./routes/aiStatusRoutes'));
 app.use('/api/test', require('./routes/testRoutes'));
 app.use('/api/health', require('./routes/healthRoutes'));
+
+app.get('/health', (_req, res) => {
+  res.json({ status: 'online', timestamp: new Date().toISOString() });
+});
 
 app.use(errorMiddleware);
 
@@ -66,7 +76,9 @@ console.log('');
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Servidor rodando na porta ${PORT}`);
+  console.log(`Ambiente: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`CORS origens: ${allowedOrigins.length > 0 ? allowedOrigins.join(', ') : '*'}`);
 });
 
 module.exports = app;

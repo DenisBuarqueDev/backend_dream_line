@@ -17,7 +17,7 @@ async function testDeepSeek() {
 
   if (!apiKey) {
     log.push({ time: new Date().toISOString(), type: 'error', message: '❌ DEEPSEEK_API_KEY não encontrada no .env' });
-    log.push({ time: new Date().toISOString(), type: 'warning', message: '💡 Defina DEEPSEEK_API_KEY ou USE_AI_GATEWAY=false para usar o sistema legado' });
+    log.push({ time: new Date().toISOString(), type: 'warning', message: '💡 Defina DEEPSEEK_API_KEY para ativar interpretação por IA' });
     return { provider: 'deepseek', status, elapsed: Date.now() - start, modelUsed, tokensUsed, responsePreview, log };
   }
 

@@ -81,7 +81,10 @@ async function generateDreamImage(interpretation, emotions = [], context = {}) {
   const config = AI_PROVIDERS.flux.primary;
   const apiKey = process.env.FLUX_API_KEY || process.env.REPLICATE_API_KEY;
 
+  console.log('📤 Prompt FLUX:', prompt.substring(0, 200));
+
   if (!apiKey) {
+    console.error('❌ FLUX_API_KEY não configurada');
     return {
       imageUrl: null,
       prompt,
@@ -130,8 +133,13 @@ async function generateDreamImage(interpretation, emotions = [], context = {}) {
   };
 
   try {
-    return await executeWithRetry(requestFn, AI_PROVIDERS.flux.retries);
+    console.log('🎨 FLUX: enviando requisição para Replicate...');
+    const result = await executeWithRetry(requestFn, AI_PROVIDERS.flux.retries);
+    console.log('✅ FLUX: imagem gerada com sucesso');
+    return result;
   } catch (error) {
+    console.error('❌ FLUX error:', error.message);
+    console.log('⚠️ fallback ativado: tentando Stability AI...');
     return await fallbackGeneration(prompt, error.message);
   }
 }
@@ -198,7 +206,7 @@ async function fallbackGeneration(prompt, errorMessage) {
       const filepath = path.join(tempDir, filename);
       await fs.writeFile(filepath, buffer);
 
-      console.log('Stability AI online');
+      console.log('✅ Stability AI online');
       return {
         imageUrl: `/temp/generated/${filename}`,
         imageBase64: `data:image/png;base64,${base64}`,
@@ -206,7 +214,7 @@ async function fallbackGeneration(prompt, errorMessage) {
         seed: Date.now(),
       };
     } catch (error) {
-      console.error('Stability AI error:', error.response?.data || error.message);
+      console.error('❌ Stability AI error:', error.response?.data || error.message);
     }
   }
 

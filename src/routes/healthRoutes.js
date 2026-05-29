@@ -10,7 +10,7 @@ router.get('/ai', async (req, res) => {
     stability: 'offline',
     whisper: 'offline',
     groq_whisper: 'offline',
-    gateway: process.env.USE_AI_GATEWAY === 'true' ? 'online' : 'offline',
+    gateway: 'online',
   };
 
   const checks = [];
@@ -40,13 +40,6 @@ router.get('/ai', async (req, res) => {
     health.stability = 'online';
   }
 
-  if (process.env.OPENAI_API_KEY) {
-    health.whisper = 'online';
-  } else {
-    health.whisper = 'offline';
-    checks.push('OPENAI_API_KEY ausente');
-  }
-
   if (process.env.GROQ_API_KEY) {
     health.groq_whisper = 'online';
   } else {
@@ -54,13 +47,13 @@ router.get('/ai', async (req, res) => {
     checks.push('GROQ_API_KEY ausente');
   }
 
-  const allOnline = health.deepseek === 'online' || health.flux === 'online' || health.claude === 'online' || health.whisper === 'online';
+  const allOnline = health.deepseek === 'online' || health.flux === 'online' || health.claude === 'online';
 
   res.json({
     status: allOnline ? 'online' : 'offline',
     ...health,
     notes: checks.length > 0 ? checks : ['Todas as APIs configuradas'],
-    mode: process.env.USE_AI_GATEWAY === 'true' ? 'gateway' : 'legacy',
+    mode: 'gateway',
   });
 });
 

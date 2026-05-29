@@ -1,6 +1,38 @@
 const express = require('express');
 const router = express.Router();
 
+const { testDeepSeek } = require('../tests/ai/testDeepSeek');
+const { testFlux } = require('../tests/ai/testFlux');
+const { testClaude } = require('../tests/ai/testClaude');
+const { testStability } = require('../tests/ai/testStability');
+const { testWhisper } = require('../tests/ai/testWhisper');
+
+router.get('/test-all', async (req, res) => {
+  const start = Date.now();
+
+  const results = await Promise.allSettled([
+    testDeepSeek(),
+    testFlux(),
+    testClaude(),
+    testStability(),
+    testWhisper(),
+  ]);
+
+  const tests = {
+    deepseek: results[0].status === 'fulfilled' ? results[0].value.status : 'offline',
+    flux: results[1].status === 'fulfilled' ? results[1].value.status : 'offline',
+    claude: results[2].status === 'fulfilled' ? results[2].value.status : 'offline',
+    stability: results[3].status === 'fulfilled' ? results[3].value.status : 'offline',
+    groq: results[4].status === 'fulfilled' ? results[4].value.status : 'offline',
+  };
+
+  res.json({
+    timestamp: new Date().toISOString(),
+    elapsed: Date.now() - start,
+    ...tests,
+  });
+});
+
 router.get('/diagnostics', async (req, res) => {
   const status = {
     timestamp: new Date().toISOString(),
@@ -10,8 +42,8 @@ router.get('/diagnostics', async (req, res) => {
     stability: process.env.STABLE_DIFFUSION_API_KEY ? 'online' : 'offline',
     groq_whisper: process.env.GROQ_API_KEY ? 'online' : 'offline',
     web_speech_api: 'disponivel',
-    gateway: process.env.USE_AI_GATEWAY === 'true' ? 'online' : 'offline',
-    mode: process.env.USE_AI_GATEWAY === 'true' ? 'gateway' : 'legacy',
+    gateway: 'online',
+    mode: 'gateway',
   };
 
   const allOnline = Object.values(status).every(v => v === 'online' || v === 'disponivel');

@@ -3,26 +3,10 @@ const fluxService = require('./fluxService');
 const whisperService = require('./whisperService');
 const { FEATURE_ROUTING } = require('../../config/aiProviders');
 
-const USE_NEW_ARCHITECTURE = process.env.USE_AI_GATEWAY === 'true' || false;
+const USE_NEW_ARCHITECTURE = true;
 
 async function processDreamPipeline(dreamText, userContext = {}, options = {}) {
-  if (!USE_NEW_ARCHITECTURE) {
-    const { analisarSonho } = require('../aiService');
-    const mockResult = await analisarSonho(dreamText);
-    return {
-      interpretation: mockResult.interpretacao || '',
-      categorias: mockResult.categorias || [],
-      padroes: mockResult.padroes || { tematicos: [], espirituais: [], biologicos: [] },
-      emotions: [],
-      numerology: null,
-      spiritualMessage: '',
-      energy: '',
-      symbols: [],
-      image: null,
-      psychologicalAnalysis: '',
-      provider: 'legacy-mock',
-    };
-  }
+  console.log('📤 Dream sent to DeepSeek:', dreamText.substring(0, 100));
 
   const result = {
     interpretation: '',
@@ -40,6 +24,8 @@ async function processDreamPipeline(dreamText, userContext = {}, options = {}) {
 
   try {
     const deepseekResult = await deepseekService.interpretDream(dreamText, userContext);
+    console.log('✅ DeepSeek response recebida');
+
     Object.assign(result, {
       interpretation: deepseekResult.interpretation || '',
       emotions: deepseekResult.emotions || [],
@@ -49,25 +35,22 @@ async function processDreamPipeline(dreamText, userContext = {}, options = {}) {
       numerology: deepseekResult.numerology || null,
     });
   } catch (error) {
-    console.error('[AIGateway] DeepSeek error:', error.message);
-    const { analisarSonho } = require('../aiService');
-    const mockResult = await analisarSonho(dreamText);
-    result.interpretation = mockResult.interpretacao || '';
-    result.categorias = mockResult.categorias || [];
-    result.padroes = mockResult.padroes || { tematicos: [], espirituais: [], biologicos: [] };
-    result.provider = 'fallback-mock';
+    console.error('❌ DeepSeek error:', error.message);
+    throw new Error(`Falha na interpretação: ${error.message}`);
   }
 
   if (options.generateImage !== false && result.interpretation) {
     try {
+      console.log('🎨 Generating image with FLUX');
       const imageResult = await fluxService.generateDreamImage(
         result.interpretation,
         result.emotions,
         { dreamText }
       );
       result.image = imageResult;
+      console.log('✅ FLUX image generated');
     } catch (error) {
-      console.error('[AIGateway] FLUX error:', error.message);
+      console.error('❌ FLUX error:', error.message);
       result.image = { error: error.message };
     }
   }
@@ -110,10 +93,11 @@ async function transcribeAndInterpret(audioFilePath, userContext = {}, options =
 }
 
 async function generateDreamImage(interpretation, emotions = [], context = {}) {
-  if (USE_NEW_ARCHITECTURE) {
-    return fluxService.generateDreamImage(interpretation, emotions, context);
-  }
-  return { imageUrl: null, prompt: '', error: 'AI Gateway desabilitado' };
+  console.log('🎨 Generating image with FLUX');
+  console.log('📤 Prompt:', interpretation.substring(0, 200));
+  const result = await fluxService.generateDreamImage(interpretation, emotions, context);
+  console.log('✅ FLUX response:', result.imageUrl ? 'imagem gerada' : 'falha');
+  return result;
 }
 
 function getRoutingInfo() {
@@ -121,9 +105,9 @@ function getRoutingInfo() {
     active: USE_NEW_ARCHITECTURE,
     routing: FEATURE_ROUTING,
     features: {
-      dreamInterpretation: USE_NEW_ARCHITECTURE ? 'deepseek' : 'legacy-mock',
-      imageGeneration: USE_NEW_ARCHITECTURE ? 'flux' : 'disabled',
-      audioTranscription: 'whisper',
+      dreamInterpretation: 'deepseek',
+      imageGeneration: 'flux',
+      audioTranscription: 'groq-whisper',
     },
   };
 }
