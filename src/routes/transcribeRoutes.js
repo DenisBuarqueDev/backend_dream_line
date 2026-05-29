@@ -6,8 +6,18 @@ const path = require('path');
 const protect = require('../middleware/authMiddleware');
 const whisperService = require('../services/ai/whisperService');
 
+const tempDir = path.join(__dirname, '..', '..', 'temp');
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, tempDir),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname) || '.webm';
+    const unique = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
+    cb(null, `${unique}${ext}`);
+  },
+});
+
 const upload = multer({
-  dest: path.join(__dirname, '..', '..', 'temp'),
+  storage,
   limits: { fileSize: 25 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const validation = whisperService.validateAudioFile(file.mimetype, file.originalname, file.size);
@@ -66,12 +76,6 @@ router.post('/', protect, upload.single('audio'), async (req, res, next) => {
     res.status(err.status || 500).json({
       error: err.message || 'Erro ao transcrever áudio',
     });
-  } finally {
-    if (filePath) {
-      try { await fs.remove(filePath); } catch (_) { /* ignore */ }
-    }
-  }
-});
   } finally {
     if (filePath) {
       try { await fs.remove(filePath); } catch (_) { /* ignore */ }
