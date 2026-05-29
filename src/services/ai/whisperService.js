@@ -40,19 +40,30 @@ async function transcribeWithWhisper(filePath) {
     throw new Error('Arquivo de áudio não encontrado');
   }
 
-  console.log('📤 Groq Whisper: enviando áudio para transcrição');
+  const stats = await fs.stat(filePath);
+  console.log('📤 Groq Whisper: enviando áudio', {
+    path: filePath,
+    size: stats.size,
+    model: AI_PROVIDERS.whisper.primary.model,
+  });
+
+  const startTime = Date.now();
   const transcription = await groq.audio.transcriptions.create({
     file: fs.createReadStream(filePath),
     model: AI_PROVIDERS.whisper.primary.model,
     language: 'pt',
     response_format: 'text',
   });
-  console.log('📥 Groq Whisper: transcrição recebida');
+  const elapsed = Date.now() - startTime;
+
+  console.log(`📥 Groq Whisper: transcrição recebida em ${elapsed}ms`);
 
   const text = transcription.trim();
   if (!text) {
     throw new Error('Transcrição retornou texto vazio');
   }
+
+  console.log(`📝 Texto transcrito (${text.length} chars):`, text.substring(0, 100));
 
   return { text, provider: 'groq-whisper' };
 }

@@ -21,45 +21,57 @@ const upload = multer({
 
 router.post('/', protect, upload.single('audio'), async (req, res, next) => {
   let filePath = null;
+  const startTime = Date.now();
   try {
     if (!req.file) {
+      console.error('[Transcribe] Nenhum arquivo enviado');
       return res.status(400).json({ error: 'Nenhum arquivo de áudio enviado' });
     }
 
     filePath = req.file.path;
+    console.log('[Transcribe] Arquivo recebido:', {
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+      path: filePath,
+    });
 
     const result = await whisperService.transcribeAudio(filePath);
+
+    const elapsed = Date.now() - startTime;
+    console.log(`[Transcribe] Resultado em ${elapsed}ms:`, {
+      provider: result.provider,
+      textLength: result.text?.length || 0,
+      hasText: !!result.text,
+    });
 
     await fs.remove(filePath);
     filePath = null;
 
     if (result.fallback && !result.text) {
+      console.error('[Transcribe] Fallback sem texto:', result.error);
       return res.status(500).json({ error: result.error || 'Erro ao transcrever áudio' });
     }
 
     res.json({ text: result.text, provider: result.provider || 'whisper' });
   } catch (err) {
-    console.error('Erro na transcrição:', err.message);
-
-    if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(413).json({ error: 'Arquivo muito grande. Máximo 25MB.' });
+    const elapsed = Date.now() - startTime;
+    console.error(`[Transcribe] Erro em ${elapsed}ms:`, err.message);
+    if (err.name === 'MulterError') {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ error: 'Arquivo muito grande. Máximo 25MB.' });
+      }
+      return res.status(400).json({ error: err.message });
     }
-
-    if (err.status === 413) {
-      return res.status(413).json({ error: 'Arquivo muito grande para a API Groq.' });
-    }
-
-    if (err.status === 401 || err.status === 403) {
-      return res.status(500).json({ error: 'Erro de autenticação com a API de IA.' });
-    }
-
-    if (err.status === 429) {
-      return res.status(429).json({ error: 'Muitas requisições. Tente novamente em alguns segundos.' });
-    }
-
     res.status(err.status || 500).json({
       error: err.message || 'Erro ao transcrever áudio',
     });
+  } finally {
+    if (filePath) {
+      try { await fs.remove(filePath); } catch (_) { /* ignore */ }
+    }
+  }
+});
   } finally {
     if (filePath) {
       try { await fs.remove(filePath); } catch (_) { /* ignore */ }
