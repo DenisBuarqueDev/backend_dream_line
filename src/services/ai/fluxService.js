@@ -354,15 +354,7 @@ async function fallbackGeneration(prompt, errorMessage) {
       await fs.writeFile(filepath, buffer);
 
       console.log('✅ Stability AI online');
-
-      const fileExists = await fs.pathExists(filepath);
-      console.log('📁 Arquivo gerado:', filepath);
-      console.log('📁 Existe?', fileExists);
-      console.log('📁 Tamanho:', fileExists ? (await fs.stat(filepath)).size : 0);
-
-      if (!fileExists) {
-        throw new Error('Arquivo de imagem não foi salvo no disco');
-      }
+      console.log('📁 Arquivo gerado:', filepath, `(${buffer.length} bytes)`);
 
       let cloudinaryUrl = null;
       let cloudinaryPublicId = null;
@@ -372,13 +364,17 @@ async function fallbackGeneration(prompt, errorMessage) {
           const cloudResult = await cloudinaryService.uploadDreamImage(filepath);
           cloudinaryUrl = cloudResult.url;
           cloudinaryPublicId = cloudResult.publicId;
-          console.log('📁 Arquivo local removido após upload Cloudinary');
         } catch (cloudError) {
           console.error('☁ Erro upload Cloudinary (fallback):', cloudError.message);
         }
+      } else {
+        console.log('☁ Cloudinary não configurado');
       }
 
-      const imageUrl = cloudinaryUrl || `/temp/generated/${filename}`;
+      await fs.remove(filepath);
+      console.log('📁 Arquivo local removido');
+
+      const imageUrl = cloudinaryUrl || `data:image/png;base64,${base64}`;
       console.log('📁 URL final da imagem:', imageUrl);
 
       return {
