@@ -3,6 +3,7 @@ const fs = require('fs-extra');
 const path = require('path');
 const { AI_PROVIDERS } = require('../../config/aiProviders');
 const cloudinaryService = require('../cloudinaryService');
+const deepseekService = require('./deepseekService');
 
 const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
 const BLOCKED_CONTENT_TYPES = ['text/html', 'application/json', 'text/plain'];
@@ -80,7 +81,17 @@ function buildPrompt(interpretation, emotions = [], additionalContext = '') {
 }
 
 async function generateDreamImage(interpretation, emotions = [], context = {}) {
-  const prompt = buildPrompt(interpretation, emotions, context.additionalContext);
+  const promptPt = interpretation;
+  const contextPt = context.additionalContext || '';
+  console.log('📝 Prompt PT:', promptPt.substring(0, 200));
+
+  const promptEn = await deepseekService.translateToEnglish(promptPt);
+  const contextEn = contextPt
+    ? await deepseekService.translateToEnglish(contextPt)
+    : '';
+  console.log('📝 Prompt EN:', promptEn.substring(0, 200));
+
+  const prompt = buildPrompt(promptEn, emotions, contextEn);
 
   const config = AI_PROVIDERS.flux.primary;
   const apiKey = process.env.FLUX_API_KEY || process.env.REPLICATE_API_KEY;

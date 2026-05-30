@@ -271,9 +271,34 @@ async function psychologicalAnalysis(dreamText, interpretation) {
   }
 }
 
+async function translateToEnglish(text) {
+  if (!text || text.trim().length === 0) return text;
+
+  const requestFn = async () => {
+    const response = await axios(buildRequest([
+      { role: 'system', content: 'You are a translator. Translate the following text from Portuguese to English. Return ONLY the translated text, no explanations, no quotes, no prefixes.' },
+      { role: 'user', content: text },
+    ], 0.3));
+
+    if (response.data.choices && response.data.choices[0]) {
+      return response.data.choices[0].message.content.trim();
+    }
+    throw new Error('DeepSeek não retornou tradução');
+  };
+
+  try {
+    const translated = await executeWithRetry(requestFn);
+    return translated;
+  } catch (error) {
+    console.error('❌ Translation error:', error.message);
+    return text;
+  }
+}
+
 module.exports = {
   interpretDream,
   generateNumerology,
   generateSpiritualMessage,
   psychologicalAnalysis,
+  translateToEnglish,
 };
