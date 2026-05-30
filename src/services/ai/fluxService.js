@@ -2,6 +2,7 @@ const axios = require('axios');
 const fs = require('fs-extra');
 const path = require('path');
 const { AI_PROVIDERS } = require('../../config/aiProviders');
+const cloudinaryService = require('../cloudinaryService');
 
 const STYLE_KEYWORDS = [
   'cinematic',
@@ -136,11 +137,49 @@ async function generateDreamImage(interpretation, emotions = [], context = {}) {
     console.log('🎨 FLUX: enviando requisição para Replicate...');
     const result = await executeWithRetry(requestFn, AI_PROVIDERS.flux.retries);
     console.log('✅ FLUX: imagem gerada com sucesso');
+
+    if (result.imageUrl) {
+      const cloudinaryResult = await uploadToCloudinaryFromUrl(result.imageUrl);
+      if (cloudinaryResult) {
+        result.imageUrl = cloudinaryResult.url;
+        result.cloudinaryPublicId = cloudinaryResult.publicId;
+      }
+    }
+
     return result;
   } catch (error) {
     console.error('❌ FLUX error:', error.message);
     console.log('⚠️ fallback ativado: tentando Stability AI...');
     return await fallbackGeneration(prompt, error.message);
+  }
+}
+
+async function uploadToCloudinaryFromUrl(imageUrl) {
+  if (!cloudinaryService.isConfigured()) {
+    console.log('☁ Cloudinary não configurado, usando URL original');
+    return null;
+  }
+
+  const tempDir = path.join(__dirname, '..', '..', '..', 'temp', 'generated');
+  await fs.ensureDir(tempDir);
+  const tempFilePath = path.join(tempDir, `cloudinary_upload_${Date.now()}.png`);
+
+  try {
+    const response = await axios({
+      url: imageUrl,
+      method: 'GET',
+      responseType: 'arraybuffer',
+      timeout: 30000,
+    });
+
+    await fs.writeFile(tempFilePath, Buffer.from(response.data));
+    const result = await cloudinaryService.uploadDreamImage(tempFilePath);
+    return result;
+  } catch (error) {
+    console.error('☁ Erro ao fazer upload para Cloudinary:', error.message);
+    return null;
+  } finally {
+    try { await fs.remove(tempFilePath); } catch (_) { /* ignore */ }
   }
 }
 
@@ -207,9 +246,24 @@ async function fallbackGeneration(prompt, errorMessage) {
       await fs.writeFile(filepath, buffer);
 
       console.log('✅ Stability AI online');
+
+      let cloudinaryUrl = null;
+      let cloudinaryPublicId = null;
+
+      if (cloudinaryService.isConfigured()) {
+        try {
+          const cloudResult = await cloudinaryService.uploadDreamImage(filepath);
+          cloudinaryUrl = cloudResult.url;
+          cloudinaryPublicId = cloudResult.publicId;
+        } catch (cloudError) {
+          console.error('☁ Erro upload Cloudinary (fallback):', cloudError.message);
+        }
+      }
+
       return {
-        imageUrl: `/temp/generated/${filename}`,
-        imageBase64: `data:image/png;base64,${base64}`,
+        imageUrl: cloudinaryUrl || `/temp/generated/${filename}`,
+        imageBase64: cloudinaryUrl ? null : `data:image/png;base64,${base64}`,
+        cloudinaryPublicId,
         prompt,
         seed: Date.now(),
       };

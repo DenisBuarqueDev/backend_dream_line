@@ -5,6 +5,7 @@ const { errorResponse, successResponse } = require('../utils/response');
 const { calculateDreamNumerology } = require('../services/dreamNumerologyService');
 const { checkFeatureAccess } = require('../middleware/planMiddleware');
 const aiGateway = require('../services/ai/aiGatewayService');
+const cloudinaryService = require('../services/cloudinaryService');
 
 const calculateDuration = (horaDormir, horaAcordar) => {
   const parseTime = (time) => {
@@ -177,6 +178,10 @@ const deleteDream = async (req, res, next) => {
       return errorResponse(res, 'Dream not found', 404);
     }
 
+    if (dream.imagePublicId) {
+      await cloudinaryService.deleteDreamImage(dream.imagePublicId);
+    }
+
     await Dream.findByIdAndDelete(id);
 
     return successResponse(res, { message: 'Dream deleted successfully' });
@@ -241,6 +246,10 @@ const generateImage = async (req, res, next) => {
 
         if (imageResult.imageUrl) {
           dream.imageUrl = imageResult.imageUrl;
+          dream.imageGeneratedAt = new Date();
+          if (imageResult.cloudinaryPublicId) {
+            dream.imagePublicId = imageResult.cloudinaryPublicId;
+          }
           if (!dream.aiData) dream.aiData = {};
           dream.aiData.imagePrompt = imageResult.prompt;
           dream.aiData.imageSeed = imageResult.seed;

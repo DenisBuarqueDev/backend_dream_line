@@ -52,6 +52,9 @@ const DreamSchema = new mongoose.Schema({
   imagePublicId: {
     type: String
   },
+  imageGeneratedAt: {
+    type: Date
+  },
   dreamNumerology: DreamNumerologySchema,
   aiData: {
     transcription: String,
