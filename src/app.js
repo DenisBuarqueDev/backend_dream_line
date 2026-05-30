@@ -52,6 +52,19 @@ app.use('/api/ai', require('./routes/aiStatusRoutes'));
 app.use('/api/test', require('./routes/testRoutes'));
 app.use('/api/health', require('./routes/healthRoutes'));
 
+app.get('/api/debug/image-providers', (_req, res) => {
+  res.json({
+    flux: process.env.FLUX_API_KEY || process.env.REPLICATE_API_KEY ? 'online' : 'offline',
+    stability: process.env.STABLE_DIFFUSION_API_KEY ? 'online' : 'offline',
+    credits: {
+      replicate: process.env.REPLICATE_API_KEY ? 'configurado' : 'ausente',
+      stability: process.env.STABLE_DIFFUSION_API_KEY ? 'configurado' : 'ausente',
+    },
+    lastError: null,
+    timestamp: new Date().toISOString(),
+  });
+});
+
 app.get('/health', (_req, res) => {
   res.json({ status: 'online', timestamp: new Date().toISOString() });
 });

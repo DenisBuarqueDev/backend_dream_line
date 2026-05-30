@@ -98,6 +98,7 @@ async function generateDreamImage(interpretation, emotions = [], context = {}) {
   }
 
   const requestFn = async () => {
+    console.log('🎨 Provider: Replicate (FLUX)');
     const response = await axios({
       url: config.url,
       method: 'POST',
@@ -116,7 +117,22 @@ async function generateDreamImage(interpretation, emotions = [], context = {}) {
         },
       },
       timeout: AI_PROVIDERS.flux.timeout,
+      validateStatus: (status) => status < 500,
     });
+
+    console.log('🎨 Status Replicate:', response.status);
+
+    if (response.status === 429) {
+      throw Object.assign(new Error('Limite de uso ou créditos insuficientes na Replicate API'), {
+        status: 429, provider: 'replicate', response: response.data,
+      });
+    }
+
+    if (response.status !== 200 && response.status !== 201) {
+      throw Object.assign(new Error(`Replicate retornou status ${response.status}: ${JSON.stringify(response.data).substring(0, 200)}`), {
+        status: response.status, provider: 'replicate', response: response.data,
+      });
+    }
 
     const prediction = response.data;
     console.log('📥 Resposta FLUX (primeiro 400 chars):', JSON.stringify(prediction).substring(0, 400));
@@ -157,7 +173,22 @@ async function generateDreamImage(interpretation, emotions = [], context = {}) {
 
     return result;
   } catch (error) {
-    console.error('❌ FLUX error:', error.message);
+    const fluxStatus = error.status || error.response?.status || 500;
+    console.error('❌ Image Generation Error');
+    console.error('❌ Provider: Replicate (FLUX)');
+    console.error('❌ Status:', fluxStatus);
+    console.error('❌ Data:', error.response?.data || error.message);
+
+    if (fluxStatus === 429) {
+      console.log('⚠️ FLUX rate limitado, tentando fallback...');
+      const fallbackResult = await fallbackGeneration(prompt, error.message);
+      if (fallbackResult.imageUrl) return fallbackResult;
+      fallbackResult.provider = 'replicate';
+      fallbackResult.status = 429;
+      fallbackResult.message = 'Limite de uso ou créditos insuficientes';
+      return fallbackResult;
+    }
+
     console.log('⚠️ fallback ativado: tentando Stability AI...');
     return await fallbackGeneration(prompt, error.message);
   }
@@ -176,12 +207,20 @@ async function uploadToCloudinaryFromUrl(imageUrl) {
   const tempFilePath = path.join(tempDir, `cloudinary_upload_${Date.now()}.png`);
 
   try {
+    console.log('☁ Provider: Cloudinary (upload)');
     const response = await axios({
       url: imageUrl,
       method: 'GET',
       responseType: 'arraybuffer',
       timeout: 30000,
+      validateStatus: (status) => status < 500,
     });
+
+    console.log('☁ Status download image:', response.status);
+
+    if (response.status === 429) {
+      throw Object.assign(new Error('Rate limit no download da imagem'), { status: 429, provider: 'cloudinary' });
+    }
 
     const contentType = response.headers['content-type'] || '';
     console.log('☁ Content-Type recebido:', contentType);
@@ -221,7 +260,11 @@ async function uploadToCloudinaryFromUrl(imageUrl) {
     console.log('☁ Public ID Cloudinary:', result.publicId);
     return result;
   } catch (error) {
-    console.error('☁ Erro no upload Cloudinary:', error.message);
+    const cloudStatus = error.status || error.response?.status || 500;
+    console.error('☁ Image Generation Error');
+    console.error('☁ Provider: Cloudinary (upload)');
+    console.error('☁ Status:', cloudStatus);
+    console.error('☁ Data:', error.response?.data || error.message);
     return null;
   } finally {
     try { await fs.remove(tempFilePath); } catch (_) { /* ignore */ }
@@ -235,11 +278,19 @@ async function pollPrediction(url, apiKey, maxAttempts = 30) {
       method: 'GET',
       headers: { 'Authorization': `Token ${apiKey}` },
       timeout: 5000,
+      validateStatus: (status) => status < 500,
     });
 
-    const status = response.data.status;
-    if (status === 'succeeded') return response.data;
-    if (status === 'failed') throw new Error(`FLUX prediction failed: ${response.data.error}`);
+    if (response.status === 429) {
+      throw Object.assign(new Error('Limite de uso ou créditos insuficientes na Replicate API (polling)'), {
+        status: 429, provider: 'replicate',
+      });
+    }
+
+    const predStatus = response.data.status;
+    console.log(`⏳ Polling Replicate tentativa ${i + 1}/${maxAttempts}: status=${predStatus}, http=${response.status}`);
+    if (predStatus === 'succeeded') return response.data;
+    if (predStatus === 'failed') throw new Error(`FLUX prediction failed: ${response.data.error}`);
 
     await new Promise(resolve => setTimeout(resolve, 1000));
   }
@@ -252,6 +303,8 @@ async function executeWithRetry(requestFn, retries = 2) {
     try {
       return await requestFn();
     } catch (error) {
+      console.warn(`⚠️ Tentativa ${attempt}/${retries} falhou:`, error.message, '| status:', error.status || error.response?.status);
+      if (error.status === 429) throw error;
       if (attempt === retries) throw error;
       await new Promise(resolve => setTimeout(resolve, delay * attempt));
     }
@@ -269,6 +322,7 @@ async function fallbackGeneration(prompt, errorMessage) {
       form.append('prompt', prompt);
       form.append('output_format', 'png');
 
+      console.log('🎨 Provider: Stability AI');
       const response = await axios({
         url: fallback.url,
         method: 'POST',
@@ -280,7 +334,16 @@ async function fallbackGeneration(prompt, errorMessage) {
         data: form,
         responseType: 'arraybuffer',
         timeout: 60000,
+        validateStatus: (status) => status < 500,
       });
+
+      console.log('🎨 Status Stability:', response.status);
+
+      if (response.status === 429) {
+        throw Object.assign(new Error('Limite de uso ou créditos insuficientes na Stability AI'), {
+          status: 429, provider: 'stability',
+        });
+      }
 
       const buffer = Buffer.from(response.data);
       const base64 = buffer.toString('base64');
@@ -326,7 +389,21 @@ async function fallbackGeneration(prompt, errorMessage) {
         seed: Date.now(),
       };
     } catch (error) {
-      console.error('❌ Stability AI error:', error.response?.data || error.message);
+      const stabStatus = error.response?.status || 500;
+      console.error('❌ Image Generation Error');
+      console.error('❌ Provider: Stability AI');
+      console.error('❌ Status:', stabStatus);
+      console.error('❌ Data:', error.response?.data || error.message);
+
+      if (stabStatus === 429) {
+        return {
+          success: false,
+          provider: 'stability',
+          status: 429,
+          message: 'Limite de uso ou créditos insuficientes',
+          error: error.message,
+        };
+      }
     }
   }
 

@@ -259,8 +259,10 @@ const generateImage = async (req, res, next) => {
           dream.aiData.imagePrompt = imageResult.prompt;
           dream.aiData.imageSeed = imageResult.seed;
           dream.aiData.generatedAt = new Date();
+        } else if (imageResult.status === 429) {
+          return errorResponse(res, imageResult.message || 'Limite de uso ou créditos insuficientes', 429);
         } else {
-          return errorResponse(res, imageResult.error || 'Falha ao gerar imagem com FLUX', 500);
+          return errorResponse(res, imageResult.error || 'Falha ao gerar imagem', 500);
         }
       } catch (fluxError) {
         return errorResponse(res, `Erro na geração de imagem: ${fluxError.message}`, 500);
