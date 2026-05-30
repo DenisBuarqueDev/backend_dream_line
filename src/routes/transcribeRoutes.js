@@ -6,13 +6,26 @@ const path = require('path');
 const protect = require('../middleware/authMiddleware');
 const whisperService = require('../services/ai/whisperService');
 
+const MIME_TO_EXT_BACKEND = {
+  'audio/webm': 'webm',
+  'audio/mp4': 'mp4',
+  'audio/mpeg': 'mp3',
+  'audio/wav': 'wav',
+  'audio/ogg': 'ogg',
+  'audio/aac': 'aac',
+  'audio/flac': 'flac',
+  'audio/x-m4a': 'm4a',
+};
+
 const tempDir = path.join(__dirname, '..', '..', 'temp');
+fs.ensureDirSync(tempDir);
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, tempDir),
   filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname) || '.webm';
+    const baseMime = whisperService.getBaseMimeType(file.mimetype);
+    const ext = MIME_TO_EXT_BACKEND[baseMime] || path.extname(file.originalname).replace('.', '') || 'webm';
     const unique = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
-    cb(null, `${unique}${ext}`);
+    cb(null, `${unique}.${ext}`);
   },
 });
 
@@ -39,12 +52,14 @@ router.post('/', protect, upload.single('audio'), async (req, res, next) => {
     }
 
     filePath = req.file.path;
-    console.log('[Transcribe] Arquivo recebido:', {
-      originalname: req.file.originalname,
-      mimetype: req.file.mimetype,
-      size: req.file.size,
-      path: filePath,
-    });
+    console.log('═══════════════════════════════════════');
+    console.log('[Transcribe] Arquivo recebido:');
+    console.log('  originalname:', req.file.originalname);
+    console.log('  mimetype:', req.file.mimetype);
+    console.log('  path:', req.file.path);
+    console.log('  size:', req.file.size);
+    console.log('  saved as:', path.basename(filePath));
+    console.log('═══════════════════════════════════════');
 
     const result = await whisperService.transcribeAudio(filePath);
 
@@ -81,6 +96,32 @@ router.post('/', protect, upload.single('audio'), async (req, res, next) => {
       try { await fs.remove(filePath); } catch (_) { /* ignore */ }
     }
   }
+});
+
+router.get('/debug', async (_req, res) => {
+  const tempExists = await fs.pathExists(tempDir);
+  res.json({
+    tempDir,
+    tempExists,
+    config: {
+      maxFileSize: '25MB',
+      allowedFormats: require('../config/aiProviders').AI_PROVIDERS.whisper.allowedFormats,
+    },
+  });
+});
+
+router.post('/debug', protect, upload.single('audio'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'Nenhum arquivo enviado' });
+  }
+  res.json({
+    originalname: req.file.originalname,
+    mimetype: req.file.mimetype,
+    path: req.file.path,
+    size: req.file.size,
+    exists: await fs.pathExists(req.file.path),
+    savedAs: path.basename(req.file.path),
+  });
 });
 
 module.exports = router;

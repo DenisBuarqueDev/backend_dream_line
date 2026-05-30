@@ -16,11 +16,11 @@ const upload = multer({
   dest: path.join(__dirname, '..', '..', 'temp'),
   limits: { fileSize: 25 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    const allowed = ['audio/webm', 'audio/mp4', 'audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/mp3', 'audio/m4a', 'audio/x-m4a'];
-    if (allowed.includes(file.mimetype) || file.originalname.match(/\.(webm|mp4|mpeg|wav|ogg|mp3|m4a)$/i)) {
+    const validation = whisperService.validateAudioFile(file.mimetype, file.originalname, file.size);
+    if (validation.valid) {
       cb(null, true);
     } else {
-      cb(new Error('Formato de áudio não suportado'));
+      cb(new Error(validation.error));
     }
   },
 });

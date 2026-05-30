@@ -1,6 +1,21 @@
 const OpenAI = require('openai');
 const fs = require('fs-extra');
+const path = require('path');
 const { AI_PROVIDERS } = require('../../config/aiProviders');
+
+const EXT_TO_MIME = {
+  webm: 'audio/webm',
+  mp4: 'audio/mp4',
+  m4a: 'audio/mp4',
+  mp3: 'audio/mpeg',
+  mpeg: 'audio/mpeg',
+  mpga: 'audio/mpeg',
+  wav: 'audio/wav',
+  ogg: 'audio/ogg',
+  opus: 'audio/ogg',
+  flac: 'audio/flac',
+  aac: 'audio/aac',
+};
 
 function getGroqClient() {
   const apiKey = process.env.GROQ_API_KEY;
@@ -47,9 +62,13 @@ async function transcribeWithWhisper(filePath) {
     model: AI_PROVIDERS.whisper.primary.model,
   });
 
+  const ext = path.extname(filePath).toLowerCase().replace('.', '') || 'webm';
+  const mimeType = EXT_TO_MIME[ext] || 'audio/webm';
+  console.log('📤 Groq Whisper: enviando arquivo', { ext, mimeType, path: filePath });
+
   const startTime = Date.now();
   const transcription = await groq.audio.transcriptions.create({
-    file: fs.createReadStream(filePath),
+    file: await OpenAI.toFile(fs.createReadStream(filePath), `transcription.${ext}`, { type: mimeType }),
     model: AI_PROVIDERS.whisper.primary.model,
     language: 'pt',
     response_format: 'text',
@@ -95,10 +114,20 @@ function sanitizeFileName(originalName) {
   return originalName.replace(/[^a-zA-Z0-9._-]/g, '_');
 }
 
+function getBaseMimeType(mimetype) {
+  return (mimetype || '').split(';')[0].trim();
+}
+
+function getExtensionFromMime(mimetype) {
+  const base = getBaseMimeType(mimetype);
+  return EXT_TO_MIME[Object.keys(EXT_TO_MIME).find(k => EXT_TO_MIME[k] === base)] || 'webm';
+}
+
 function validateAudioFile(mimetype, originalName, size) {
   const config = AI_PROVIDERS.whisper;
-  const isAllowedMime = config.allowedFormats.includes(mimetype);
-  const isAllowedExt = /\.(webm|mp4|mpeg|wav|ogg|mp3|m4a)$/i.test(originalName);
+  const baseMime = getBaseMimeType(mimetype);
+  const isAllowedMime = config.allowedFormats.includes(baseMime) || config.allowedFormats.includes(mimetype);
+  const isAllowedExt = /\.(webm|mp4|mpeg|wav|ogg|mp3|m4a|opus|flac|aac)$/i.test(originalName);
 
   if (!isAllowedMime && !isAllowedExt) {
     return { valid: false, error: 'Formato de áudio não suportado' };
@@ -118,4 +147,6 @@ module.exports = {
   validateAudioFile,
   sanitizeFileName,
   getGroqClient,
+  getBaseMimeType,
+  getExtensionFromMime,
 };
