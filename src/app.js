@@ -4,6 +4,7 @@ const cors = require('cors');
 const connectDB = require('./config/db');
 const securityMiddleware = require('./middleware/securityMiddleware');
 const errorMiddleware = require('./middleware/errorMiddleware');
+const path = require('path');
 const { logEnvStatus } = require('./utils/envValidator');
 
 const app = express();
@@ -33,6 +34,10 @@ if (!process.env.JWT_SECRET) {
 }
 
 connectDB();
+
+const generatedDir = path.join(__dirname, '..', 'temp', 'generated');
+app.use('/temp/generated', express.static(generatedDir));
+console.log('📁 Servindo arquivos estáticos de:', generatedDir);
 
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/users', require('./routes/userRoutes'));

@@ -4,6 +4,9 @@ const path = require('path');
 const { AI_PROVIDERS } = require('../../config/aiProviders');
 const cloudinaryService = require('../cloudinaryService');
 
+const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
+const BLOCKED_CONTENT_TYPES = ['text/html', 'application/json', 'text/plain'];
+
 const STYLE_KEYWORDS = [
   'cinematic',
   'surreal',
@@ -116,18 +119,24 @@ async function generateDreamImage(interpretation, emotions = [], context = {}) {
     });
 
     const prediction = response.data;
+    console.log('📥 Resposta FLUX (primeiro 400 chars):', JSON.stringify(prediction).substring(0, 400));
 
     if (prediction.urls && prediction.urls.get) {
+      console.log('🔗 URL de polling Replicate:', prediction.urls.get);
       const result = await pollPrediction(prediction.urls.get, apiKey);
+      const imageUrl = result.output?.[0] || null;
+      console.log('🔗 URL da imagem gerada (output[0]):', imageUrl);
       return {
-        imageUrl: result.output?.[0] || null,
+        imageUrl,
         prompt,
         seed: result.metrics?.predict_time ? Math.floor(result.metrics.predict_time * 1000) : null,
       };
     }
 
+    const imageUrl = prediction.output?.[0] || null;
+    console.log('🔗 URL da imagem (resposta direta):', imageUrl);
     return {
-      imageUrl: prediction.output?.[0] || null,
+      imageUrl,
       prompt,
       seed: prediction.metrics?.predict_time ? Math.floor(prediction.metrics.predict_time * 1000) : null,
     };
@@ -160,6 +169,8 @@ async function uploadToCloudinaryFromUrl(imageUrl) {
     return null;
   }
 
+  console.log('☁ Iniciando download da imagem:', imageUrl);
+
   const tempDir = path.join(__dirname, '..', '..', '..', 'temp', 'generated');
   await fs.ensureDir(tempDir);
   const tempFilePath = path.join(tempDir, `cloudinary_upload_${Date.now()}.png`);
@@ -172,11 +183,45 @@ async function uploadToCloudinaryFromUrl(imageUrl) {
       timeout: 30000,
     });
 
+    const contentType = response.headers['content-type'] || '';
+    console.log('☁ Content-Type recebido:', contentType);
+
+    const isBlocked = BLOCKED_CONTENT_TYPES.some(t => contentType.includes(t));
+    if (isBlocked) {
+      const preview = Buffer.from(response.data).slice(0, 200).toString('utf-8');
+      console.error('☁ CONTEÚDO INVÁLIDO! Content-Type bloqueado:', contentType);
+      console.error('☁ Preview do conteúdo:', preview);
+      throw new Error(`Conteúdo não é uma imagem. Content-Type: ${contentType}`);
+    }
+
+    const isAllowed = ALLOWED_IMAGE_TYPES.some(t => contentType.includes(t));
+    if (!isAllowed) {
+      console.warn('☁ Content-Type não reconhecido como imagem:', contentType, '- tentando upload mesmo assim');
+    }
+
     await fs.writeFile(tempFilePath, Buffer.from(response.data));
+
+    const fileBuffer = await fs.readFile(tempFilePath);
+    const headerHex = fileBuffer.slice(0, 8).toString('hex');
+    const isPng = headerHex.startsWith('89504e47');
+    const isJpeg = headerHex.startsWith('ffd8');
+    const isWebp = headerHex.startsWith('52494646');
+
+    if (!isPng && !isJpeg && !isWebp) {
+      const textPreview = fileBuffer.slice(0, 300).toString('utf-8');
+      console.error('☁ ARQUIVO NÃO É IMAGEM VÁLIDA! Magic bytes:', headerHex);
+      console.error('☁ Preview do conteúdo:', textPreview);
+      throw new Error('Arquivo baixado não é uma imagem válida (magic bytes não correspondem)');
+    }
+
+    console.log('☁ Imagem validada com sucesso (magic bytes):', headerHex);
+
     const result = await cloudinaryService.uploadDreamImage(tempFilePath);
+    console.log('☁ URL Cloudinary final:', result.url);
+    console.log('☁ Public ID Cloudinary:', result.publicId);
     return result;
   } catch (error) {
-    console.error('☁ Erro ao fazer upload para Cloudinary:', error.message);
+    console.error('☁ Erro no upload Cloudinary:', error.message);
     return null;
   } finally {
     try { await fs.remove(tempFilePath); } catch (_) { /* ignore */ }
@@ -247,6 +292,15 @@ async function fallbackGeneration(prompt, errorMessage) {
 
       console.log('✅ Stability AI online');
 
+      const fileExists = await fs.pathExists(filepath);
+      console.log('📁 Arquivo gerado:', filepath);
+      console.log('📁 Existe?', fileExists);
+      console.log('📁 Tamanho:', fileExists ? (await fs.stat(filepath)).size : 0);
+
+      if (!fileExists) {
+        throw new Error('Arquivo de imagem não foi salvo no disco');
+      }
+
       let cloudinaryUrl = null;
       let cloudinaryPublicId = null;
 
@@ -255,13 +309,17 @@ async function fallbackGeneration(prompt, errorMessage) {
           const cloudResult = await cloudinaryService.uploadDreamImage(filepath);
           cloudinaryUrl = cloudResult.url;
           cloudinaryPublicId = cloudResult.publicId;
+          console.log('📁 Arquivo local removido após upload Cloudinary');
         } catch (cloudError) {
           console.error('☁ Erro upload Cloudinary (fallback):', cloudError.message);
         }
       }
 
+      const imageUrl = cloudinaryUrl || `/temp/generated/${filename}`;
+      console.log('📁 URL final da imagem:', imageUrl);
+
       return {
-        imageUrl: cloudinaryUrl || `/temp/generated/${filename}`,
+        imageUrl,
         imageBase64: cloudinaryUrl ? null : `data:image/png;base64,${base64}`,
         cloudinaryPublicId,
         prompt,

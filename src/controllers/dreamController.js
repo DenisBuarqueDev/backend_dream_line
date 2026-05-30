@@ -245,7 +245,12 @@ const generateImage = async (req, res, next) => {
         });
 
         if (imageResult.imageUrl) {
-          dream.imageUrl = imageResult.imageUrl;
+          const baseUrl = `${req.protocol}://${req.get('host')}`;
+          dream.imageUrl = imageResult.imageUrl.startsWith('/')
+            ? `${baseUrl}${imageResult.imageUrl}`
+            : imageResult.imageUrl;
+          console.log('🖼 URL da imagem salva:', dream.imageUrl);
+
           dream.imageGeneratedAt = new Date();
           if (imageResult.cloudinaryPublicId) {
             dream.imagePublicId = imageResult.cloudinaryPublicId;
