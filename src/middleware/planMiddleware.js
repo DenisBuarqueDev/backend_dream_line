@@ -81,4 +81,30 @@ const getUserPlanInfo = async (userId) => {
   }
 };
 
-module.exports = { checkFeatureAccess, checkDreamLimit, getUserPlanInfo };
+const requirePremium = (req, res, next) => {
+  return checkFeatureAccess('sleep_mode')(req, res, next);
+};
+
+const requirePro = async (req, res, next) => {
+  try {
+    if (!req.userId) {
+      return errorResponse(res, 'Usuário não autenticado', 401);
+    }
+
+    const user = await User.findById(req.userId);
+
+    if (!user) {
+      return errorResponse(res, 'Usuário não encontrado', 404);
+    }
+
+    if (user.plan !== 'pro') {
+      return errorResponse(res, 'Funcionalidade disponível apenas para plano Pro', 403);
+    }
+
+    next();
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { checkFeatureAccess, checkDreamLimit, getUserPlanInfo, requirePremium, requirePro };

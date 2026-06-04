@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const protect = require('../middleware/authMiddleware');
 const User = require('../models/User');
-const { upgradePlan, getCurrentPlan } = require('../controllers/planController');
+const { getCurrentPlan } = require('../controllers/planController');
 
 router.get('/me', protect, async (req, res) => {
   try {
@@ -23,7 +23,6 @@ router.get('/me', protect, async (req, res) => {
   }
 });
 
-router.post('/upgrade', protect, upgradePlan);
 router.get('/plan', protect, getCurrentPlan);
 
 module.exports = router;

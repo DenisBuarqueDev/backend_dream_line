@@ -51,6 +51,8 @@ app.use('/api/ai', require('./routes/aiRoutes'));
 app.use('/api/ai', require('./routes/aiStatusRoutes'));
 app.use('/api/test', require('./routes/testRoutes'));
 app.use('/api/health', require('./routes/healthRoutes'));
+app.use('/api/subscription', require('./routes/subscriptionRoutes'));
+app.use('/api/payments', require('./routes/paymentRoutes'));
 
 app.get('/api/debug/image-providers', (_req, res) => {
   res.json({

@@ -36,7 +36,7 @@ const register = async (req, res, next) => {
       dreamLimitResetAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
     });
 
-    const token = generateToken(user._id);
+      const token = generateToken(user._id);
     const planInfo = user.checkUserPlan();
 
     return successResponse(
@@ -54,7 +54,8 @@ const register = async (req, res, next) => {
           maxDreams: planInfo.maxDreams,
           canGenerateImage: planInfo.canGenerateImage,
           canUseSleepMode: planInfo.canUseSleepMode,
-          canSeeWeeklySummary: planInfo.canSeeWeeklySummary
+          canSeeWeeklySummary: planInfo.canSeeWeeklySummary,
+          subscription: user.subscription
         },
       },
       201,
@@ -98,7 +99,8 @@ const login = async (req, res, next) => {
         maxDreams: planInfo.maxDreams,
         canGenerateImage: planInfo.canGenerateImage,
         canUseSleepMode: planInfo.canUseSleepMode,
-        canSeeWeeklySummary: planInfo.canSeeWeeklySummary
+        canSeeWeeklySummary: planInfo.canSeeWeeklySummary,
+        subscription: user.subscription
       },
     });
   } catch (error) {

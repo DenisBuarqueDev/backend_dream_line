@@ -54,6 +54,38 @@ const UserSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
+  subscription: {
+    plan: {
+      type: String,
+      enum: ['free', 'premium', 'pro'],
+      default: 'free'
+    },
+    status: {
+      type: String,
+      enum: ['inactive', 'active', 'cancelled', 'expired'],
+      default: 'inactive'
+    },
+    mercadoPagoSubscriptionId: {
+      type: String,
+      default: null
+    },
+    mercadoPagoPlanId: {
+      type: String,
+      default: null
+    },
+    startedAt: {
+      type: Date,
+      default: null
+    },
+    expiresAt: {
+      type: Date,
+      default: null
+    },
+    lastPaymentAt: {
+      type: Date,
+      default: null
+    }
+  },
   createdAt: {
     type: Date,
     default: Date.now
