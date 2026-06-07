@@ -227,7 +227,7 @@ const generateImage = async (req, res, next) => {
 
     const planInfo = user.checkUserPlan();
     if (!planInfo.canGenerateImage) {
-      return errorResponse(res, 'Funcionalidade disponível apenas para plano Pro', 403);
+      return errorResponse(res, 'Funcionalidade disponível apenas para plano Premium', 403);
     }
 
     const dream = await Dream.findOne({ _id: id, userId: req.userId });

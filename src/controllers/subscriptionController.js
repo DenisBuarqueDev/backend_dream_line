@@ -1,15 +1,12 @@
 const User = require('../models/User');
 const { errorResponse, successResponse } = require('../utils/response');
-const {
-  createPremiumSubscription,
-  createProSubscription,
-} = require('../services/mercadoPagoSubscriptionService');
+const { createPremiumSubscription } = require('../services/mercadoPagoSubscriptionService');
 
 const createSubscription = async (req, res, next) => {
   try {
     const { plan } = req.body;
 
-    if (!plan || !['premium', 'pro'].includes(plan)) {
+    if (!plan || plan !== 'premium') {
       return errorResponse(res, 'Plano inválido', 400);
     }
 
@@ -18,9 +15,7 @@ const createSubscription = async (req, res, next) => {
       return errorResponse(res, 'Usuário não encontrado', 404);
     }
 
-    const subscriptionData = plan === 'premium'
-      ? await createPremiumSubscription({ userId: user._id.toString(), userEmail: user.email })
-      : await createProSubscription({ userId: user._id.toString(), userEmail: user.email });
+    const subscriptionData = await createPremiumSubscription({ userId: user._id.toString(), userEmail: user.email });
 
     return successResponse(res, {
       initPoint: subscriptionData.initPoint,

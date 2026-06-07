@@ -11,14 +11,6 @@ const PLAN_LIMITS = {
     canGetFullInterpretation: false
   },
   premium: {
-    maxDreams: 30,
-    maxAstralCharts: Infinity,
-    canGenerateImage: false,
-    canUseSleepMode: true,
-    canSeeWeeklySummary: true,
-    canGetFullInterpretation: true
-  },
-  pro: {
     maxDreams: 60,
     maxAstralCharts: Infinity,
     canGenerateImage: true,
@@ -43,7 +35,7 @@ const UserSchema = new mongoose.Schema({
   },
   plan: {
     type: String,
-    enum: ['free', 'premium', 'pro'],
+    enum: ['free', 'premium'],
     default: 'free'
   },
   dreamCount: {
@@ -57,7 +49,7 @@ const UserSchema = new mongoose.Schema({
   subscription: {
     plan: {
       type: String,
-      enum: ['free', 'premium', 'pro'],
+      enum: ['free', 'premium'],
       default: 'free'
     },
     status: {

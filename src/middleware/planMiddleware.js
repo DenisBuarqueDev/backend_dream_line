@@ -2,10 +2,10 @@ const User = require('../models/User');
 const { errorResponse } = require('../utils/response');
 
 const FEATURE_MESSAGES = {
-  generate_image: 'Funcionalidade disponível apenas para plano Pro',
+  generate_image: 'Funcionalidade disponível apenas para plano Premium',
   interpret_dream: 'Limite de interpretações do plano atingido',
-  sleep_mode: 'Funcionalidade disponível apenas para planos Premium ou Pro',
-  weekly_summary: 'Funcionalidade disponível apenas para planos Premium ou Pro'
+  sleep_mode: 'Funcionalidade disponível apenas para plano Premium',
+  weekly_summary: 'Funcionalidade disponível apenas para plano Premium'
 };
 
 const checkFeatureAccess = (feature) => {
@@ -85,26 +85,4 @@ const requirePremium = (req, res, next) => {
   return checkFeatureAccess('sleep_mode')(req, res, next);
 };
 
-const requirePro = async (req, res, next) => {
-  try {
-    if (!req.userId) {
-      return errorResponse(res, 'Usuário não autenticado', 401);
-    }
-
-    const user = await User.findById(req.userId);
-
-    if (!user) {
-      return errorResponse(res, 'Usuário não encontrado', 404);
-    }
-
-    if (user.plan !== 'pro') {
-      return errorResponse(res, 'Funcionalidade disponível apenas para plano Pro', 403);
-    }
-
-    next();
-  } catch (error) {
-    next(error);
-  }
-};
-
-module.exports = { checkFeatureAccess, checkDreamLimit, getUserPlanInfo, requirePremium, requirePro };
+module.exports = { checkFeatureAccess, checkDreamLimit, getUserPlanInfo, requirePremium };

@@ -24,7 +24,7 @@ const SubscriptionLogSchema = new mongoose.Schema({
   },
   plan: {
     type: String,
-    enum: ['free', 'premium', 'pro'],
+    enum: ['free', 'premium'],
     default: null
   },
   status: {

@@ -16,20 +16,6 @@ function getHeaders() {
   };
 }
 
-function getPlanId(plan) {
-  if (plan === 'premium') {
-    const id = process.env.MERCADOPAGO_PREMIUM_PLAN_ID;
-    if (!id) throw new Error('MERCADOPAGO_PREMIUM_PLAN_ID não configurado');
-    return id;
-  }
-  if (plan === 'pro') {
-    const id = process.env.MERCADOPAGO_PRO_PLAN_ID;
-    if (!id) throw new Error('MERCADOPAGO_PRO_PLAN_ID não configurado');
-    return id;
-  }
-  throw new Error('Plano inválido');
-}
-
 async function logSubscriptionAction({ userId, action, plan, status, metadata, mercadoPagoSubscriptionId, mercadoPagoPlanId, ip, userAgent }) {
   try {
     await SubscriptionLog.create({
@@ -199,15 +185,25 @@ async function renewSubscription(userId) {
 }
 
 async function createPreapproval({ userId, userEmail, plan, payerEmail }) {
-  const planId = getPlanId(plan);
   const externalReference = `${userId}:${plan}`;
+  const amountKey = 'MERCADOPAGO_PREMIUM_AMOUNT';
+  const transactionAmount = parseFloat(process.env[amountKey]);
+  if (isNaN(transactionAmount)) {
+    throw new Error(`${amountKey} não configurado ou inválido`);
+  }
+  const backUrl = process.env.FRONTEND_URL || 'https://frontend-dream-line.vercel.app';
 
   const body = {
-    preapproval_plan_id: planId,
     external_reference: externalReference,
     payer_email: payerEmail || userEmail,
-    auto_recurring: { frequency: 1, frequency_type: 'months' },
-    reason: `Dream Line ${plan === 'premium' ? 'Premium' : 'Pro'}`,
+    auto_recurring: {
+      frequency: 1,
+      frequency_type: 'months',
+      transaction_amount: transactionAmount,
+      currency_id: 'BRL',
+    },
+    reason: 'Dream Line Premium',
+    back_url: backUrl + '/payment-success',
   };
 
   console.log(`[MP] Criando preapproval para usuário ${userId} | plano: ${plan}`);
@@ -223,7 +219,6 @@ async function createPreapproval({ userId, userEmail, plan, payerEmail }) {
     plan,
     status: 'inactive',
     mercadoPagoSubscriptionId: response.data.id,
-    mercadoPagoPlanId: planId,
     metadata: {
       response: response.data,
       request: body,
@@ -239,16 +234,11 @@ async function createPremiumSubscription({ userId, userEmail }) {
   return { initPoint: data.init_point, subscriptionId: data.id, status: data.status };
 }
 
-async function createProSubscription({ userId, userEmail }) {
-  const data = await createPreapproval({ userId, userEmail, plan: 'pro' });
-  return { initPoint: data.init_point, subscriptionId: data.id, status: data.status };
-}
-
 async function fetchResourceByType(resourceId, resourceType) {
   if (resourceType === 'payment' || resourceType === 'payment.created' || resourceType === 'payment.updated') {
     return await getPayment(resourceId);
   }
-  if (resourceType === 'subscription' || resourceType === 'preapproval') {
+  if (resourceType === 'subscription' || resourceType === 'preapproval' || resourceType === 'subscription_preapproval') {
     return await getSubscription(resourceId);
   }
   if (resourceType === 'subscription_created' || resourceType === 'subscription_cancelled' || resourceType === 'subscription_updated') {
@@ -272,13 +262,50 @@ async function processWebhookEvent({ action, resourceId, resourceType, rawBody, 
 
   const verifiedData = resourceData || rawBody?.data || {};
 
-  const externalReference = verifiedData.external_reference || verifiedData.externalReference;
-  const parsed = parseExternalReference(externalReference);
+  let externalReference = verifiedData.external_reference || verifiedData.externalReference;
+  let parsed = parseExternalReference(externalReference);
+  let subscriptionId = verifiedData.id || resourceId;
 
-  const subscriptionId = verifiedData.id || resourceId;
+  // Payment webhooks may not carry external_reference; look up the parent subscription
+  if (!parsed && verifiedData.preapproval_id) {
+    try {
+      const parentSub = await getSubscription(verifiedData.preapproval_id);
+      externalReference = parentSub.external_reference || parentSub.externalReference;
+      parsed = parseExternalReference(externalReference);
+      if (parsed) {
+        subscriptionId = verifiedData.preapproval_id;
+        console.log(`[MP Webhook] external_reference recuperado da assinatura pai: ${externalReference}`);
+      }
+    } catch (subErr) {
+      console.error(`[MP Webhook] Erro ao buscar assinatura pai ${verifiedData.preapproval_id}:`, subErr.message);
+    }
+  }
+
+  // Fallback: identify user by payer_email (fixed checkout URL without external_reference)
+  if (!parsed || !mongoose.Types.ObjectId.isValid(parsed.userId)) {
+    const payerEmail = verifiedData.payer_email || verifiedData.payer?.email;
+    if (payerEmail) {
+      const userByEmail = await User.findOne({ email: payerEmail.toLowerCase() }).select('_id email');
+      if (userByEmail) {
+        parsed = { userId: userByEmail._id.toString(), plan: 'premium' };
+        subscriptionId = verifiedData.id || subscriptionId;
+        console.log(`[MP Webhook] Usuário identificado por email do pagador: ${payerEmail} -> ${parsed.userId}`);
+      } else {
+        console.log(`[MP Webhook] Nenhum usuário encontrado com o email: ${payerEmail}`);
+      }
+    }
+  }
+
+  console.log(`[MP Webhook Debug] resourceType recebido: ${resourceType}`);
+  console.log(`[MP Webhook Debug] subscriptionId recebido: ${subscriptionId}`);
+  console.log(`[MP Webhook Debug] external_reference recuperado: ${externalReference}`);
+  console.log(`[MP Webhook Debug] payer_email recuperado: ${verifiedData.payer_email || verifiedData.payer?.email}`);
+  console.log(`[MP Webhook Debug] status recuperado: ${verifiedData.status}`);
+  console.log(`[MP Webhook Debug] userId identificado: ${parsed?.userId}`);
+  console.log(`[MP Webhook Debug] plano identificado: ${parsed?.plan}`);
 
   if (!parsed || !mongoose.Types.ObjectId.isValid(parsed.userId)) {
-    console.log(`[MP Webhook] external_reference inválido ou userId não encontrado: ${externalReference}`);
+    console.log(`[MP Webhook] Não foi possível identificar o usuário — external_reference: ${externalReference}`);
     await logSubscriptionAction({
       userId: null,
       action: 'webhook_received',
@@ -287,14 +314,15 @@ async function processWebhookEvent({ action, resourceId, resourceType, rawBody, 
         resourceId,
         resourceType,
         externalReference,
+        payerEmail: verifiedData.payer_email || verifiedData.payer?.email,
         verifiedData,
         rawBody,
-        error: 'external_reference inválido',
+        error: 'usuário não identificado',
       },
       ip,
       userAgent,
     });
-    return { processed: false, reason: 'external_reference inválido' };
+    return { processed: false, reason: 'usuário não identificado' };
   }
 
   const userId = parsed.userId;
@@ -333,7 +361,7 @@ async function processWebhookEvent({ action, resourceId, resourceType, rawBody, 
   }
 
   if (eventAction.includes('subscription') || eventAction.includes('preapproval')) {
-    if (resourceStatus === 'authorized' || resourceStatus === 'active' || eventAction === 'subscription_created') {
+    if (resourceStatus === 'authorized') {
       await activateSubscription({ userId, plan, mercadoPagoSubscriptionId: subscriptionId });
       return { processed: true, event: 'subscription_activated', userId, plan };
     }
@@ -357,7 +385,6 @@ async function processWebhookEvent({ action, resourceId, resourceType, rawBody, 
 
 module.exports = {
   createPremiumSubscription,
-  createProSubscription,
   cancelSubscription,
   getSubscription,
   getPayment,

@@ -4,8 +4,7 @@ const astrologyService = require('../services/astrologyService');
 
 const PLAN_CHART_LIMITS = {
   free:    1,
-  premium: Infinity,
-  pro:     Infinity
+  premium: Infinity
 };
 
 // ─── Gerar mapa astral ────────────────────────────────────────────────────────
@@ -39,7 +38,7 @@ const generateAstralChart = async (req, res) => {
 
     if (existingCharts >= chartLimit && user.plan === 'free') {
       return res.status(403).json({
-        error:           'Limite de mapas atingido. Faça upgrade para Premium ou Pro para gerar mais mapas.',
+        error:           'Limite de mapas atingido. Faça upgrade para Premium para gerar mais mapas.',
         upgradeRequired: true,
         currentPlan:     user.plan
       });
