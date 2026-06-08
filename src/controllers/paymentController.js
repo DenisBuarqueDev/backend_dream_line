@@ -1,11 +1,56 @@
+const crypto = require('crypto');
 const { errorResponse, successResponse } = require('../utils/response');
 const { processWebhookEvent } = require('../services/mercadoPagoSubscriptionService');
 
+function verifyWebhookSignature(req) {
+  const signatureHeader = req.headers['x-signature'];
+  if (!signatureHeader) {
+    return false;
+  }
+
+  const pairs = {};
+  signatureHeader.split(',').forEach(p => {
+    const eqIdx = p.indexOf('=');
+    if (eqIdx > 0) {
+      pairs[p.slice(0, eqIdx).trim()] = p.slice(eqIdx + 1).trim();
+    }
+  });
+
+  const ts = pairs['ts'];
+  const v1 = pairs['v1'];
+  if (!ts || !v1) {
+    return false;
+  }
+
+  const secret = process.env.MERCADOPAGO_WEBHOOK_SECRET;
+  if (!secret) {
+    console.error('MERCADOPAGO_WEBHOOK_SECRET não configurado');
+    return false;
+  }
+
+  const { id, type, data } = req.body;
+  const dataId = data?.id || '';
+  const manifest = `${id}|${type}|${dataId}|${ts}`;
+
+  const expected = crypto
+    .createHmac('sha256', secret)
+    .update(manifest, 'utf8')
+    .digest('hex');
+
+  try {
+    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(v1));
+  } catch {
+    return false;
+  }
+}
+
 const handleWebhook = async (req, res, next) => {
   try {
-    console.log('[MP Webhook] Recebido:', JSON.stringify(req.body, null, 2));
-
     const { action, data, type } = req.body;
+
+    if (!verifyWebhookSignature(req)) {
+      return errorResponse(res, 'Assinatura do webhook inválida', 401);
+    }
 
     if (!action && !type) {
       return errorResponse(res, 'Payload inválido: action ou type obrigatório', 400);

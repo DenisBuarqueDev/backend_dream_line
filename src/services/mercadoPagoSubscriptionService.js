@@ -35,16 +35,12 @@ async function logSubscriptionAction({ userId, action, plan, status, metadata, m
 }
 
 async function getPayment(paymentId) {
-  console.log(`[MP] Buscando payment ${paymentId}`);
   const response = await axios.get(`${MP_API_URL}/v1/payments/${paymentId}`, { headers: getHeaders() });
-  console.log(`[MP] Payment response:`, JSON.stringify(response.data, null, 2));
   return response.data;
 }
 
 async function getSubscription(subscriptionId) {
-  console.log(`[MP] Buscando subscription ${subscriptionId}`);
   const response = await axios.get(`${MP_API_URL}/preapproval/${subscriptionId}`, { headers: getHeaders() });
-  console.log(`[MP] Subscription response:`, JSON.stringify(response.data, null, 2));
   return response.data;
 }
 
@@ -206,12 +202,7 @@ async function createPreapproval({ userId, userEmail, plan, payerEmail }) {
     back_url: backUrl + '/payment-success',
   };
 
-  console.log(`[MP] Criando preapproval para usuário ${userId} | plano: ${plan}`);
-  console.log(`[MP] Request body:`, JSON.stringify(body, null, 2));
-
   const response = await axios.post(`${MP_API_URL}/preapproval`, body, { headers: getHeaders() });
-
-  console.log(`[MP] Resposta:`, JSON.stringify(response.data, null, 2));
 
   await logSubscriptionAction({
     userId,
@@ -248,8 +239,6 @@ async function fetchResourceByType(resourceId, resourceType) {
 }
 
 async function processWebhookEvent({ action, resourceId, resourceType, rawBody, ip, userAgent }) {
-  console.log(`[MP Webhook] Evento recebido: action=${action}, resourceId=${resourceId}, type=${resourceType}`);
-
   let resourceData = null;
 
   if (resourceId) {
@@ -289,23 +278,14 @@ async function processWebhookEvent({ action, resourceId, resourceType, rawBody, 
       if (userByEmail) {
         parsed = { userId: userByEmail._id.toString(), plan: 'premium' };
         subscriptionId = verifiedData.id || subscriptionId;
-        console.log(`[MP Webhook] Usuário identificado por email do pagador: ${payerEmail} -> ${parsed.userId}`);
       } else {
         console.log(`[MP Webhook] Nenhum usuário encontrado com o email: ${payerEmail}`);
       }
     }
   }
 
-  console.log(`[MP Webhook Debug] resourceType recebido: ${resourceType}`);
-  console.log(`[MP Webhook Debug] subscriptionId recebido: ${subscriptionId}`);
-  console.log(`[MP Webhook Debug] external_reference recuperado: ${externalReference}`);
-  console.log(`[MP Webhook Debug] payer_email recuperado: ${verifiedData.payer_email || verifiedData.payer?.email}`);
-  console.log(`[MP Webhook Debug] status recuperado: ${verifiedData.status}`);
-  console.log(`[MP Webhook Debug] userId identificado: ${parsed?.userId}`);
-  console.log(`[MP Webhook Debug] plano identificado: ${parsed?.plan}`);
-
   if (!parsed || !mongoose.Types.ObjectId.isValid(parsed.userId)) {
-    console.log(`[MP Webhook] Não foi possível identificar o usuário — external_reference: ${externalReference}`);
+    console.error(`[MP Webhook] Usuário não identificado: ${externalReference}`);
     await logSubscriptionAction({
       userId: null,
       action: 'webhook_received',
@@ -379,7 +359,6 @@ async function processWebhookEvent({ action, resourceId, resourceType, rawBody, 
     }
   }
 
-  console.log(`[MP Webhook] Evento não mapeado: action=${eventAction}, status=${resourceStatus}`);
   return { processed: false, reason: 'evento não mapeado', eventAction, resourceStatus };
 }
 

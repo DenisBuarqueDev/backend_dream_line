@@ -133,13 +133,13 @@ UserSchema.methods.canAccessFeature = function(feature) {
 
 UserSchema.methods.incrementDreamCount = async function() {
   const planInfo = this.checkUserPlan();
-  
+
   if (!planInfo.canInterpret) {
     return false;
   }
-  
+
+  await User.findByIdAndUpdate(this._id, { $inc: { dreamCount: 1 } });
   this.dreamCount = (this.dreamCount || 0) + 1;
-  await this.save();
   return true;
 };
 

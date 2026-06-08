@@ -95,4 +95,7 @@ const DreamSchema = new mongoose.Schema({
   timestamps: true
 });
 
+DreamSchema.index({ userId: 1, createdAt: -1 });
+DreamSchema.index({ userId: 1, 'sono.duracaoHoras': 1 });
+
 module.exports = mongoose.model('Dream', DreamSchema);

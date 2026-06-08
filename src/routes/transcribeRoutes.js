@@ -44,7 +44,6 @@ const upload = multer({
 
 router.post('/', protect, upload.single('audio'), async (req, res, next) => {
   let filePath = null;
-  const startTime = Date.now();
   try {
     if (!req.file) {
       console.error('[Transcribe] Nenhum arquivo enviado');
@@ -52,23 +51,8 @@ router.post('/', protect, upload.single('audio'), async (req, res, next) => {
     }
 
     filePath = req.file.path;
-    console.log('═══════════════════════════════════════');
-    console.log('[Transcribe] Arquivo recebido:');
-    console.log('  originalname:', req.file.originalname);
-    console.log('  mimetype:', req.file.mimetype);
-    console.log('  path:', req.file.path);
-    console.log('  size:', req.file.size);
-    console.log('  saved as:', path.basename(filePath));
-    console.log('═══════════════════════════════════════');
 
     const result = await whisperService.transcribeAudio(filePath);
-
-    const elapsed = Date.now() - startTime;
-    console.log(`[Transcribe] Resultado em ${elapsed}ms:`, {
-      provider: result.provider,
-      textLength: result.text?.length || 0,
-      hasText: !!result.text,
-    });
 
     await fs.remove(filePath);
     filePath = null;
@@ -80,8 +64,7 @@ router.post('/', protect, upload.single('audio'), async (req, res, next) => {
 
     res.json({ text: result.text, provider: result.provider || 'whisper' });
   } catch (err) {
-    const elapsed = Date.now() - startTime;
-    console.error(`[Transcribe] Erro em ${elapsed}ms:`, err.message);
+    console.error('[Transcribe] Erro:', err.message);
     if (err.name === 'MulterError') {
       if (err.code === 'LIMIT_FILE_SIZE') {
         return res.status(413).json({ error: 'Arquivo muito grande. Máximo 25MB.' });
@@ -98,30 +81,32 @@ router.post('/', protect, upload.single('audio'), async (req, res, next) => {
   }
 });
 
-router.get('/debug', async (_req, res) => {
-  const tempExists = await fs.pathExists(tempDir);
-  res.json({
-    tempDir,
-    tempExists,
-    config: {
-      maxFileSize: '25MB',
-      allowedFormats: require('../config/aiProviders').AI_PROVIDERS.whisper.allowedFormats,
-    },
+if (process.env.NODE_ENV !== 'production') {
+  router.get('/debug', async (_req, res) => {
+    const tempExists = await fs.pathExists(tempDir);
+    res.json({
+      tempDir,
+      tempExists,
+      config: {
+        maxFileSize: '25MB',
+        allowedFormats: require('../config/aiProviders').AI_PROVIDERS.whisper.allowedFormats,
+      },
+    });
   });
-});
 
-router.post('/debug', protect, upload.single('audio'), async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'Nenhum arquivo enviado' });
-  }
-  res.json({
-    originalname: req.file.originalname,
-    mimetype: req.file.mimetype,
-    path: req.file.path,
-    size: req.file.size,
-    exists: await fs.pathExists(req.file.path),
-    savedAs: path.basename(req.file.path),
+  router.post('/debug', protect, upload.single('audio'), async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Nenhum arquivo enviado' });
+    }
+    res.json({
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      path: req.file.path,
+      size: req.file.size,
+      exists: await fs.pathExists(req.file.path),
+      savedAs: path.basename(req.file.path),
+    });
   });
-});
+}
 
 module.exports = router;

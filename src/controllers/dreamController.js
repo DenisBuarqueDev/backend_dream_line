@@ -55,10 +55,10 @@ const createDream = async (req, res, next) => {
     let aiResult = { interpretacao: '', categorias: [], padroes: { tematicos: [], espirituais: [], biologicos: [] } };
     let aiData = null;
 
-    if (!interpretacao) {
-      const astralChart = await AstralChart.findOne({ userId: req.userId })
-        .sort({ createdAt: -1 });
+    const astralChart = await AstralChart.findOne({ userId: req.userId })
+      .sort({ createdAt: -1 }).lean();
 
+    if (!interpretacao) {
       const userContext = astralChart
         ? { sunSign: astralChart.sunSign, moonSign: astralChart.moonSign, ascendant: astralChart.ascendant }
         : {};
@@ -112,9 +112,6 @@ const createDream = async (req, res, next) => {
 
     let dreamNumerology = null;
     try {
-      const astralChart = await AstralChart.findOne({ userId: req.userId })
-        .sort({ createdAt: -1 });
-
       const interpretacaoTexto = interpretacao || aiResult.interpretacao;
 
       const astrologyData = astralChart
@@ -138,8 +135,7 @@ const createDream = async (req, res, next) => {
       console.warn('Numerologia do sonho não gerada (dados insuficientes):', numerologyError.message);
     }
 
-    const updatedUser = await User.findById(req.userId);
-    const updatedPlanInfo = updatedUser.checkUserPlan();
+    const updatedPlanInfo = user.checkUserPlan();
 
     return successResponse(res, {
       message: 'Dream created successfully',
@@ -159,10 +155,27 @@ const createDream = async (req, res, next) => {
 
 const getDreams = async (req, res, next) => {
   try {
-    const dreams = await Dream.find({ userId: req.userId })
-      .sort({ createdAt: -1 });
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+    const skip = (page - 1) * limit;
 
-    return successResponse(res, { dreams });
+    const [dreams, total] = await Promise.all([
+      Dream.find({ userId: req.userId })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      Dream.countDocuments({ userId: req.userId })
+    ]);
+
+    return successResponse(res, {
+      dreams,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    });
   } catch (error) {
     next(error);
   }
@@ -246,8 +259,6 @@ const generateImage = async (req, res, next) => {
 
         if (imageResult.imageUrl) {
           dream.imageUrl = imageResult.imageUrl;
-          console.log('🖼 URL da imagem salva:', dream.imageUrl);
-
           dream.imageGeneratedAt = new Date();
           if (imageResult.cloudinaryPublicId) {
             dream.imagePublicId = imageResult.cloudinaryPublicId;

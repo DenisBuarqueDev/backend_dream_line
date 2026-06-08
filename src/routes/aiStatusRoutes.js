@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const protect = require('../middleware/authMiddleware');
 
 const { testDeepSeek } = require('../tests/ai/testDeepSeek');
 const { testFlux } = require('../tests/ai/testFlux');
@@ -7,7 +8,7 @@ const { testClaude } = require('../tests/ai/testClaude');
 const { testStability } = require('../tests/ai/testStability');
 const { testWhisper } = require('../tests/ai/testWhisper');
 
-router.get('/test-all', async (req, res) => {
+router.get('/test-all', protect, async (req, res) => {
   const start = Date.now();
 
   const results = await Promise.allSettled([
@@ -33,7 +34,7 @@ router.get('/test-all', async (req, res) => {
   });
 });
 
-router.get('/diagnostics', async (req, res) => {
+router.get('/diagnostics', protect, async (req, res) => {
   const status = {
     timestamp: new Date().toISOString(),
     deepseek: process.env.DEEPSEEK_API_KEY || process.env.AI_API_KEY ? 'online' : 'offline',
