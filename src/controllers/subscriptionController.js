@@ -1,49 +1,47 @@
 const User = require('../models/User');
 const { errorResponse, successResponse } = require('../utils/response');
-const { createPremiumSubscription } = require('../services/mercadoPagoSubscriptionService');
+const { createCheckoutPreference } = require('../services/mercadoPagoCheckoutService');
 
-const createSubscription = async (req, res, next) => {
+const createCheckout = async (req, res, next) => {
   try {
-    const { plan } = req.body;
-
-    if (plan !== 'premium') {
-      return errorResponse(res, 'Plano inválido', 400);
-    }
-
     const user = await User.findById(req.userId);
     if (!user) {
       return errorResponse(res, 'Usuário não encontrado', 404);
     }
 
-    const subscriptionData = await createPremiumSubscription({ userId: user._id.toString(), userEmail: user.email });
-
-    return successResponse(res, {
-      initPoint: subscriptionData.initPoint,
-      subscriptionId: subscriptionData.subscriptionId,
+    const checkout = await createCheckoutPreference({
+      userId: user._id.toString(),
+      userEmail: user.email,
     });
+
+    return successResponse(res, checkout);
   } catch (error) {
-    console.error('[MP] Erro ao criar assinatura:', error.response?.data || error.message);
+    console.error('[MP] Erro ao criar checkout:', error.response?.data || error.message);
     next(error);
   }
 };
 
 const getStatus = async (req, res, next) => {
   try {
-    const user = await User.findById(req.userId).select('subscription plan');
-
+    const user = await User.findById(req.userId).select('plan subscription premiumSince premiumExpiresAt lastPaymentId');
     if (!user) {
       return errorResponse(res, 'Usuário não encontrado', 404);
     }
 
+    const planInfo = user.checkUserPlan();
+
     return successResponse(res, {
-      plan: user.subscription.plan,
-      status: user.subscription.status,
-      startedAt: user.subscription.startedAt,
-      expiresAt: user.subscription.expiresAt,
+      plan: user.plan,
+      status: user.subscription?.status || 'inactive',
+      isPremium: planInfo.isPremium,
+      daysRemaining: planInfo.daysRemaining,
+      premiumSince: planInfo.premiumSince,
+      premiumExpiresAt: planInfo.premiumExpiresAt,
+      lastPaymentId: user.lastPaymentId,
     });
   } catch (error) {
     next(error);
   }
 };
 
-module.exports = { createSubscription, getStatus };
+module.exports = { createCheckout, getStatus };

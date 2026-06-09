@@ -46,6 +46,18 @@ const UserSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
+  lastPaymentId: {
+    type: String,
+    default: null
+  },
+  premiumSince: {
+    type: Date,
+    default: null
+  },
+  premiumExpiresAt: {
+    type: Date,
+    default: null
+  },
   subscription: {
     plan: {
       type: String,
@@ -89,12 +101,18 @@ UserSchema.methods.comparePassword = async function(candidatePassword) {
 };
 
 UserSchema.methods.checkExpiry = function() {
-  if (
+  const expiredViaSubscription =
     this.plan === 'premium' &&
     this.subscription?.status === 'active' &&
     this.subscription?.expiresAt &&
-    new Date() > this.subscription.expiresAt
-  ) {
+    new Date() > this.subscription.expiresAt;
+
+  const expiredViaPremium =
+    this.plan === 'premium' &&
+    this.premiumExpiresAt &&
+    new Date() > this.premiumExpiresAt;
+
+  if (expiredViaSubscription || expiredViaPremium) {
     this.plan = 'free';
     this.subscription.status = 'expired';
     return true;
@@ -107,10 +125,22 @@ UserSchema.methods.checkUserPlan = function() {
 
   const limits = PLAN_LIMITS[this.plan] || PLAN_LIMITS.free;
   const now = new Date();
+  const isPremium = this.plan === 'premium';
+
+  let daysRemaining = null;
+  if (isPremium && this.premiumExpiresAt) {
+    daysRemaining = Math.max(0, Math.ceil((this.premiumExpiresAt - now) / (1000 * 60 * 60 * 24)));
+  } else if (isPremium && this.subscription?.expiresAt) {
+    daysRemaining = Math.max(0, Math.ceil((this.subscription.expiresAt - now) / (1000 * 60 * 60 * 24)));
+  }
   
   if (this.dreamLimitResetAt && now > this.dreamLimitResetAt) {
     return {
       plan: this.plan,
+      isPremium,
+      daysRemaining,
+      premiumSince: this.premiumSince || this.subscription?.startedAt || null,
+      premiumExpiresAt: this.premiumExpiresAt || this.subscription?.expiresAt || null,
       canInterpret: true,
       canGenerateImage: limits.canGenerateImage,
       canUseSleepMode: limits.canUseSleepMode,
@@ -125,6 +155,10 @@ UserSchema.methods.checkUserPlan = function() {
   
   return {
     plan: this.plan,
+    isPremium,
+    daysRemaining,
+    premiumSince: this.premiumSince || this.subscription?.startedAt || null,
+    premiumExpiresAt: this.premiumExpiresAt || this.subscription?.expiresAt || null,
     canInterpret: remaining > 0,
     canGenerateImage: limits.canGenerateImage,
     canUseSleepMode: limits.canUseSleepMode,
@@ -159,15 +193,33 @@ UserSchema.methods.incrementDreamCount = async function() {
   return true;
 };
 
+UserSchema.methods.activatePremium = function(paymentId) {
+  const now = new Date();
+  const expiresAt = new Date(now);
+  expiresAt.setDate(expiresAt.getDate() + 30);
+
+  this.plan = 'premium';
+  this.lastPaymentId = paymentId;
+  this.premiumSince = now;
+  this.premiumExpiresAt = expiresAt;
+  this.subscription.plan = 'premium';
+  this.subscription.status = 'active';
+  this.subscription.startedAt = now;
+  this.subscription.expiresAt = expiresAt;
+  this.subscription.lastPaymentAt = now;
+};
+
 UserSchema.statics.getPlanLimits = (plan) => {
   return PLAN_LIMITS[plan] || PLAN_LIMITS.free;
 };
 
 UserSchema.statics.expireOverdue = async function() {
-  const result = await this.updateMany(
+  const now = new Date();
+  const result1 = await this.updateMany(
     {
+      plan: 'premium',
       'subscription.status': 'active',
-      'subscription.expiresAt': { $lte: new Date() },
+      'subscription.expiresAt': { $lte: now },
     },
     {
       $set: {
@@ -176,7 +228,21 @@ UserSchema.statics.expireOverdue = async function() {
       },
     }
   );
-  return result.modifiedCount;
+
+  const result2 = await this.updateMany(
+    {
+      plan: 'premium',
+      premiumExpiresAt: { $lte: now },
+    },
+    {
+      $set: {
+        plan: 'free',
+        'subscription.status': 'expired',
+      },
+    }
+  );
+
+  return result1.modifiedCount + result2.modifiedCount;
 };
 
 module.exports = mongoose.model('User', UserSchema);

@@ -198,6 +198,139 @@ async function renewSubscription(userId) {
   return user;
 }
 
+async function createPreapprovalPlan({ plan }) {
+  const amountKey = 'MERCADOPAGO_PREMIUM_AMOUNT';
+  const transactionAmount = parseFloat(process.env[amountKey]);
+  if (isNaN(transactionAmount)) {
+    throw new Error(`${amountKey} não configurado ou inválido`);
+  }
+  const backUrl = process.env.FRONTEND_URL || 'https://frontend-dream-line.vercel.app';
+
+  const body = {
+    reason: 'Dream Line Premium',
+    auto_recurring: {
+      frequency: 1,
+      frequency_type: 'months',
+      transaction_amount: transactionAmount,
+      currency_id: 'BRL',
+    },
+    payment_methods_allowed: {
+      payment_types: [{ id: 'credit_card' }],
+    },
+    back_url: backUrl + '/payment-success',
+  };
+
+  console.log(`[MP] Criando plano de assinatura...`);
+  console.log(`[MP] Request body:`, JSON.stringify(body, null, 2));
+
+  const response = await axios.post(`${MP_API_URL}/preapproval_plan`, body, { headers: getHeaders() });
+
+  console.log(`[MP] Plano criado:`, JSON.stringify(response.data, null, 2));
+
+  await logSubscriptionAction({
+    userId: null,
+    action: 'plan_created',
+    plan,
+    metadata: {
+      planId: response.data.id,
+      response: response.data,
+      statusCode: response.status,
+    },
+  });
+
+  return response.data;
+}
+
+async function createPreapprovalSubscription({ userId, userEmail, plan, cardTokenId }) {
+  const externalReference = `${userId}:${plan}`;
+  const amountKey = 'MERCADOPAGO_PREMIUM_AMOUNT';
+  const transactionAmount = parseFloat(process.env[amountKey]);
+  if (isNaN(transactionAmount)) {
+    throw new Error(`${amountKey} não configurado ou inválido`);
+  }
+  const backUrl = process.env.FRONTEND_URL || 'https://frontend-dream-line.vercel.app';
+
+  const planId = process.env.MERCADOPAGO_PREMIUM_PLAN_ID;
+
+  const autoRecurring = {
+    frequency: 1,
+    frequency_type: 'months',
+    transaction_amount: transactionAmount,
+    currency_id: 'BRL',
+  };
+
+  let body;
+  let endpoint;
+
+  if (cardTokenId) {
+    if (!planId) {
+      throw new Error('MERCADOPAGO_PREMIUM_PLAN_ID não configurado. Execute o script setup-mercadopago-plan.js primeiro.');
+    }
+    body = {
+      preapproval_plan_id: planId,
+      reason: 'Dream Line Premium',
+      external_reference: externalReference,
+      payer_email: userEmail,
+      card_token_id: cardTokenId,
+      back_url: backUrl + '/payment-success',
+      status: 'authorized',
+    };
+    endpoint = `${MP_API_URL}/preapproval`;
+    console.log(`[MP] Criando assinatura autorizada (com cartão) para ${userId}`);
+  } else {
+    body = {
+      reason: 'Dream Line Premium',
+      external_reference: externalReference,
+      payer_email: userEmail,
+      auto_recurring: autoRecurring,
+      back_url: backUrl + '/payment-success',
+      status: 'pending',
+    };
+    endpoint = `${MP_API_URL}/preapproval`;
+    console.log(`[MP] Criando preapproval pendente para ${userId}`);
+  }
+
+  console.log(`[MP] Payload:`, JSON.stringify(body, null, 2));
+
+  const response = await axios.post(endpoint, body, { headers: getHeaders() });
+
+  console.log(`[MP] Preapproval criado:`, JSON.stringify(response.data, null, 2));
+
+  await logSubscriptionAction({
+    userId,
+    action: 'subscription_created',
+    plan,
+    status: response.data.status || 'pending',
+    mercadoPagoSubscriptionId: response.data.id,
+    metadata: {
+      response: response.data,
+      request: body,
+      statusCode: response.status,
+    },
+  });
+
+  return { ...response.data, usedCardToken: !!cardTokenId };
+}
+
+async function createPremiumSubscription({ userId, userEmail, cardTokenId }) {
+  try {
+    const data = await createPreapprovalSubscription({
+      userId,
+      userEmail,
+      plan: 'premium',
+      cardTokenId,
+    });
+    return { initPoint: data.init_point, subscriptionId: data.id, status: data.status, usedCardToken: data.usedCardToken };
+  } catch (error) {
+    const mpError = error.response?.data?.message || '';
+    if (mpError.includes('payer_email') || mpError.includes('real or test users')) {
+      console.log('[MP] Preapproval com email falhou. Usando fallback Checkout Pro.');
+      return await createPremiumCheckout({ userId, userEmail });
+    }
+    throw error;
+  }
+}
+
 async function createPaymentPreference({ userId, userEmail, plan }) {
   const externalReference = `${userId}:${plan}`;
   const amountKey = 'MERCADOPAGO_PREMIUM_AMOUNT';
@@ -232,7 +365,7 @@ async function createPaymentPreference({ userId, userEmail, plan }) {
 
   await logSubscriptionAction({
     userId,
-    action: 'subscription_created',
+    action: 'checkout_preference_created',
     plan,
     status: 'inactive',
     metadata: {
@@ -245,7 +378,7 @@ async function createPaymentPreference({ userId, userEmail, plan }) {
   return response.data;
 }
 
-async function createPremiumSubscription({ userId, userEmail }) {
+async function createPremiumCheckout({ userId, userEmail }) {
   const data = await createPaymentPreference({ userId, userEmail, plan: 'premium' });
   return { initPoint: data.init_point, subscriptionId: data.id, status: 'pending' };
 }
@@ -280,7 +413,6 @@ async function processWebhookEvent({ action, resourceId, resourceType, rawBody, 
   let parsed = parseExternalReference(externalReference);
   let subscriptionId = verifiedData.id || resourceId;
 
-  // Payment webhooks may not carry external_reference; look up the parent subscription
   if (!parsed && verifiedData.preapproval_id) {
     try {
       const parentSub = await getSubscription(verifiedData.preapproval_id);
@@ -295,7 +427,6 @@ async function processWebhookEvent({ action, resourceId, resourceType, rawBody, 
     }
   }
 
-  // Fallback: identify user by payer_email (fixed checkout URL without external_reference)
   if (!parsed || !mongoose.Types.ObjectId.isValid(parsed.userId)) {
     const payerEmail = verifiedData.payer_email || verifiedData.payer?.email;
     if (payerEmail) {
@@ -392,6 +523,8 @@ async function processWebhookEvent({ action, resourceId, resourceType, rawBody, 
 
 module.exports = {
   createPremiumSubscription,
+  createPremiumCheckout,
+  createPreapprovalPlan,
   cancelSubscription,
   getSubscription,
   getPayment,

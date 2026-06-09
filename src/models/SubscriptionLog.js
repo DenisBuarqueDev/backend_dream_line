@@ -19,7 +19,8 @@ const SubscriptionLogSchema = new mongoose.Schema({
       'payment_received',
       'payment_failed',
       'plan_changed',
-      'webhook_received'
+      'webhook_received',
+      'checkout_preference_created'
     ]
   },
   plan: {

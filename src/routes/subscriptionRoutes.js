@@ -1,9 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const protect = require('../middleware/authMiddleware');
-const { createSubscription, getStatus } = require('../controllers/subscriptionController');
+const { createCheckout, getStatus } = require('../controllers/subscriptionController');
 
-router.post('/subscribe', protect, createSubscription);
+router.post('/create-checkout', protect, createCheckout);
 router.get('/status', protect, getStatus);
 
 module.exports = router;
