@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const connectDB = require('./config/db');
+const User = require('./models/User');
 const securityMiddleware = require('./middleware/securityMiddleware');
 const errorMiddleware = require('./middleware/errorMiddleware');
 const path = require('path');
@@ -110,7 +111,16 @@ if (process.env.NODE_ENV !== 'production') {
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
+  try {
+    const expired = await User.expireOverdue();
+    if (expired > 0) {
+      console.log(`[Expiry] ${expired} assinatura(s) expirada(s) na inicialização`);
+    }
+  } catch (err) {
+    console.error('[Expiry] Erro ao expirar assinaturas:', err.message);
+  }
+
   console.log(`Servidor rodando na porta ${PORT}`);
   console.log(`Ambiente: ${process.env.NODE_ENV || 'development'}`);
   console.log(`CORS origens: ${allowedOrigins.length > 0 ? allowedOrigins.join(', ') : '*'}`);

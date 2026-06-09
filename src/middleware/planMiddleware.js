@@ -21,6 +21,10 @@ const checkFeatureAccess = (feature) => {
         return errorResponse(res, 'Usuário não encontrado', 404);
       }
 
+      if (user.checkExpiry()) {
+        await user.save();
+      }
+
       const planInfo = user.checkUserPlan();
 
       if (feature === 'interpret_dream') {

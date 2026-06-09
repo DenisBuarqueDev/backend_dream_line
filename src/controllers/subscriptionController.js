@@ -6,7 +6,7 @@ const createSubscription = async (req, res, next) => {
   try {
     const { plan } = req.body;
 
-    if (!plan || plan !== 'premium') {
+    if (plan !== 'premium') {
       return errorResponse(res, 'Plano inválido', 400);
     }
 

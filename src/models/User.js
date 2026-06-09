@@ -88,7 +88,23 @@ UserSchema.methods.comparePassword = async function(candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
 
+UserSchema.methods.checkExpiry = function() {
+  if (
+    this.plan === 'premium' &&
+    this.subscription?.status === 'active' &&
+    this.subscription?.expiresAt &&
+    new Date() > this.subscription.expiresAt
+  ) {
+    this.plan = 'free';
+    this.subscription.status = 'expired';
+    return true;
+  }
+  return false;
+};
+
 UserSchema.methods.checkUserPlan = function() {
+  this.checkExpiry();
+
   const limits = PLAN_LIMITS[this.plan] || PLAN_LIMITS.free;
   const now = new Date();
   
@@ -138,13 +154,29 @@ UserSchema.methods.incrementDreamCount = async function() {
     return false;
   }
 
-  await User.findByIdAndUpdate(this._id, { $inc: { dreamCount: 1 } });
+  await this.constructor.findByIdAndUpdate(this._id, { $inc: { dreamCount: 1 } });
   this.dreamCount = (this.dreamCount || 0) + 1;
   return true;
 };
 
 UserSchema.statics.getPlanLimits = (plan) => {
   return PLAN_LIMITS[plan] || PLAN_LIMITS.free;
+};
+
+UserSchema.statics.expireOverdue = async function() {
+  const result = await this.updateMany(
+    {
+      'subscription.status': 'active',
+      'subscription.expiresAt': { $lte: new Date() },
+    },
+    {
+      $set: {
+        plan: 'free',
+        'subscription.status': 'expired',
+      },
+    }
+  );
+  return result.modifiedCount;
 };
 
 module.exports = mongoose.model('User', UserSchema);

@@ -1,6 +1,8 @@
 const axios = require('axios');
 const { AI_PROVIDERS } = require('../../config/aiProviders');
 
+const devLog = process.env.NODE_ENV !== 'production' ? console.log : () => {};
+
 const PROMPTS = {
   interpretDream: `Você é um especialista em interpretação de sonhos com abordagem emocional, espiritual e psicológica. Analise o sonho abaixo e forneça uma interpretação profunda e humanizada em português brasileiro.
 
@@ -102,7 +104,7 @@ function parseJSONResponse(text) {
 async function interpretDream(dreamText, userContext = {}) {
   const prompt = PROMPTS.interpretDream + dreamText;
 
-  console.log('📤 DeepSeek prompt enviado:', dreamText.substring(0, 100));
+  devLog('📤 DeepSeek prompt enviado:', dreamText.substring(0, 100));
 
   const requestFn = async () => {
     const response = await axios(buildRequest([
@@ -110,7 +112,7 @@ async function interpretDream(dreamText, userContext = {}) {
       { role: 'user', content: prompt },
     ]));
 
-    console.log('📥 DeepSeek response recebida');
+    devLog('📥 DeepSeek response recebida');
 
     let result;
     if (response.data.choices && response.data.choices[0]) {
@@ -149,11 +151,11 @@ async function forwardToClaude(dreamText, userContext, originalError) {
   const fallback = config.deepseek.fallback;
 
   if (!fallback.apiKey) {
-    console.log('⚠️ Claude fallback não disponível — CLAUDE_API_KEY ausente');
+    devLog('⚠️ Claude fallback não disponível — CLAUDE_API_KEY ausente');
     throw originalError;
   }
 
-  console.log('⚠️ fallback ativado: tentando Claude...');
+  devLog('⚠️ fallback ativado: tentando Claude...');
 
   try {
     const response = await axios({
@@ -177,7 +179,7 @@ async function forwardToClaude(dreamText, userContext, originalError) {
     if (response.data.content && response.data.content[0]) {
       const result = parseJSONResponse(response.data.content[0].text);
       if (result) {
-        console.log('✅ Claude fallback respondeu');
+        devLog('✅ Claude fallback respondeu');
         return {
           interpretation: result.interpretation || '',
           emotions: result.emotions || [],

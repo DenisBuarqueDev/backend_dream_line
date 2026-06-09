@@ -3,10 +3,12 @@ const fluxService = require('./fluxService');
 const whisperService = require('./whisperService');
 const { FEATURE_ROUTING } = require('../../config/aiProviders');
 
+const devLog = process.env.NODE_ENV !== 'production' ? console.log : () => {};
+
 const USE_NEW_ARCHITECTURE = true;
 
 async function processDreamPipeline(dreamText, userContext = {}, options = {}) {
-  console.log('📤 Dream sent to DeepSeek:', dreamText.substring(0, 100));
+  devLog('📤 Dream sent to DeepSeek:', dreamText.substring(0, 100));
 
   const result = {
     interpretation: '',
@@ -24,7 +26,7 @@ async function processDreamPipeline(dreamText, userContext = {}, options = {}) {
 
   try {
     const deepseekResult = await deepseekService.interpretDream(dreamText, userContext);
-    console.log('✅ DeepSeek response recebida');
+    devLog('✅ DeepSeek response recebida');
 
     Object.assign(result, {
       interpretation: deepseekResult.interpretation || '',
@@ -41,14 +43,14 @@ async function processDreamPipeline(dreamText, userContext = {}, options = {}) {
 
   if (options.generateImage !== false && result.interpretation) {
     try {
-      console.log('🎨 Generating image with FLUX');
+      devLog('🎨 Generating image with FLUX');
       const imageResult = await fluxService.generateDreamImage(
         result.interpretation,
         result.emotions,
         { dreamText }
       );
       result.image = imageResult;
-      console.log('✅ FLUX image generated');
+      devLog('✅ FLUX image generated');
     } catch (error) {
       console.error('❌ FLUX error:', error.message);
       result.image = { error: error.message };
@@ -93,10 +95,10 @@ async function transcribeAndInterpret(audioFilePath, userContext = {}, options =
 }
 
 async function generateDreamImage(interpretation, emotions = [], context = {}) {
-  console.log('🎨 Generating image with FLUX');
-  console.log('📤 Prompt:', interpretation.substring(0, 200));
+  devLog('🎨 Generating image with FLUX');
+  devLog('📤 Prompt:', interpretation.substring(0, 200));
   const result = await fluxService.generateDreamImage(interpretation, emotions, context);
-  console.log('✅ FLUX response:', result.imageUrl ? 'imagem gerada' : 'falha');
+  devLog('✅ FLUX response:', result.imageUrl ? 'imagem gerada' : 'falha');
   return result;
 }
 

@@ -3,6 +3,8 @@ const fs = require('fs-extra');
 const path = require('path');
 const { AI_PROVIDERS } = require('../../config/aiProviders');
 
+const devLog = process.env.NODE_ENV !== 'production' ? console.log : () => {};
+
 const EXT_TO_MIME = {
   webm: 'audio/webm',
   mp4: 'audio/mp4',
@@ -20,7 +22,7 @@ const EXT_TO_MIME = {
 function getGroqClient() {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) return null;
-  console.log('Groq Whisper online');
+  devLog('Groq Whisper online');
   return new OpenAI({
     apiKey,
     baseURL: 'https://api.groq.com/openai/v1',
@@ -56,7 +58,7 @@ async function transcribeWithWhisper(filePath) {
   }
 
   const stats = await fs.stat(filePath);
-  console.log('📤 Groq Whisper: enviando áudio', {
+  devLog('📤 Groq Whisper: enviando áudio', {
     path: filePath,
     size: stats.size,
     model: AI_PROVIDERS.whisper.primary.model,
@@ -64,7 +66,7 @@ async function transcribeWithWhisper(filePath) {
 
   const ext = path.extname(filePath).toLowerCase().replace('.', '') || 'webm';
   const mimeType = EXT_TO_MIME[ext] || 'audio/webm';
-  console.log('📤 Groq Whisper: enviando arquivo', { ext, mimeType, path: filePath });
+  devLog('📤 Groq Whisper: enviando arquivo', { ext, mimeType, path: filePath });
 
   const startTime = Date.now();
   const transcription = await groq.audio.transcriptions.create({
@@ -75,14 +77,14 @@ async function transcribeWithWhisper(filePath) {
   });
   const elapsed = Date.now() - startTime;
 
-  console.log(`📥 Groq Whisper: transcrição recebida em ${elapsed}ms`);
+  devLog(`📥 Groq Whisper: transcrição recebida em ${elapsed}ms`);
 
   const text = transcription.trim();
   if (!text) {
     throw new Error('Transcrição retornou texto vazio');
   }
 
-  console.log(`📝 Texto transcrito (${text.length} chars):`, text.substring(0, 100));
+  devLog(`📝 Texto transcrito (${text.length} chars):`, text.substring(0, 100));
 
   return { text, provider: 'groq-whisper' };
 }

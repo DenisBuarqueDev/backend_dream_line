@@ -58,11 +58,16 @@ async function activateSubscription({ userId, plan, mercadoPagoSubscriptionId })
     return null;
   }
 
+  const now = new Date();
+  const expiresAt = new Date(now);
+  expiresAt.setMonth(expiresAt.getMonth() + 1);
+
   user.plan = plan;
   user.subscription.plan = plan;
   user.subscription.status = 'active';
-  user.subscription.startedAt = new Date();
-  user.subscription.lastPaymentAt = new Date();
+  user.subscription.startedAt = now;
+  user.subscription.expiresAt = expiresAt;
+  user.subscription.lastPaymentAt = now;
   if (mercadoPagoSubscriptionId) {
     user.subscription.mercadoPagoSubscriptionId = mercadoPagoSubscriptionId;
   }
@@ -108,6 +113,14 @@ async function cancelUserPlan(userId) {
   if (!user) {
     console.error(`[MP Webhook] Usuário ${userId} não encontrado para cancelamento`);
     return null;
+  }
+
+  if (user.subscription.mercadoPagoSubscriptionId) {
+    try {
+      await cancelSubscription(user.subscription.mercadoPagoSubscriptionId);
+    } catch (cancelErr) {
+      console.error(`[MP Webhook] Erro ao cancelar no Mercado Pago:`, cancelErr.message);
+    }
   }
 
   user.plan = 'free';
@@ -162,7 +175,12 @@ async function renewSubscription(userId) {
     return null;
   }
 
-  user.subscription.lastPaymentAt = new Date();
+  const now = new Date();
+  const expiresAt = new Date(now);
+  expiresAt.setMonth(expiresAt.getMonth() + 1);
+
+  user.subscription.lastPaymentAt = now;
+  user.subscription.expiresAt = expiresAt;
   user.subscription.status = 'active';
   await user.save();
 
@@ -180,7 +198,7 @@ async function renewSubscription(userId) {
   return user;
 }
 
-async function createPreapproval({ userId, userEmail, plan, payerEmail }) {
+async function createPaymentPreference({ userId, userEmail, plan }) {
   const externalReference = `${userId}:${plan}`;
   const amountKey = 'MERCADOPAGO_PREMIUM_AMOUNT';
   const transactionAmount = parseFloat(process.env[amountKey]);
@@ -190,29 +208,36 @@ async function createPreapproval({ userId, userEmail, plan, payerEmail }) {
   const backUrl = process.env.FRONTEND_URL || 'https://frontend-dream-line.vercel.app';
 
   const body = {
-    external_reference: externalReference,
-    payer_email: payerEmail || userEmail,
-    auto_recurring: {
-      frequency: 1,
-      frequency_type: 'months',
-      transaction_amount: transactionAmount,
+    items: [{
+      title: 'Dream Line Premium - 1 mês',
+      quantity: 1,
       currency_id: 'BRL',
+      unit_price: transactionAmount,
+    }],
+    external_reference: externalReference,
+    back_urls: {
+      success: backUrl + '/payment-success',
+      failure: backUrl,
+      pending: backUrl,
     },
-    reason: 'Dream Line Premium',
-    back_url: backUrl + '/payment-success',
+    auto_return: 'approved',
+    statement_descriptor: 'DREAM LINE PREMIUM',
   };
 
-  const response = await axios.post(`${MP_API_URL}/preapproval`, body, { headers: getHeaders() });
+  if (userEmail) {
+    body.payer = { email: userEmail };
+  }
+
+  const response = await axios.post(`${MP_API_URL}/checkout/preferences`, body, { headers: getHeaders() });
 
   await logSubscriptionAction({
     userId,
     action: 'subscription_created',
     plan,
     status: 'inactive',
-    mercadoPagoSubscriptionId: response.data.id,
     metadata: {
+      preferenceId: response.data.id,
       response: response.data,
-      request: body,
       statusCode: response.status,
     },
   });
@@ -221,8 +246,8 @@ async function createPreapproval({ userId, userEmail, plan, payerEmail }) {
 }
 
 async function createPremiumSubscription({ userId, userEmail }) {
-  const data = await createPreapproval({ userId, userEmail, plan: 'premium' });
-  return { initPoint: data.init_point, subscriptionId: data.id, status: data.status };
+  const data = await createPaymentPreference({ userId, userEmail, plan: 'premium' });
+  return { initPoint: data.init_point, subscriptionId: data.id, status: 'pending' };
 }
 
 async function fetchResourceByType(resourceId, resourceType) {
@@ -322,6 +347,15 @@ async function processWebhookEvent({ action, resourceId, resourceType, rawBody, 
   const resourceStatus = verifiedData.status || '';
 
   if (eventAction.includes('payment')) {
+    if (eventAction === 'payment.created' && resourceStatus === 'approved') {
+      const user = await User.findById(userId).select('subscription.status');
+      if (user?.subscription?.status === 'active') {
+        await renewSubscription(userId);
+        return { processed: true, event: 'payment_received', userId, plan };
+      }
+      await activateSubscription({ userId, plan, mercadoPagoSubscriptionId: subscriptionId });
+      return { processed: true, event: 'payment_approved', userId, plan };
+    }
     if (resourceStatus === 'approved' || eventAction.includes('approved')) {
       await activateSubscription({ userId, plan, mercadoPagoSubscriptionId: subscriptionId });
       return { processed: true, event: 'payment_approved', userId, plan };
@@ -334,13 +368,7 @@ async function processWebhookEvent({ action, resourceId, resourceType, rawBody, 
       await expireUserPlan(userId);
       return { processed: true, event: 'payment_refunded', userId, plan };
     }
-    if (eventAction === 'payment.created' && resourceStatus === 'approved') {
-      await renewSubscription(userId);
-      return { processed: true, event: 'payment_received', userId, plan };
-    }
-  }
-
-  if (eventAction.includes('subscription') || eventAction.includes('preapproval')) {
+  } else if (eventAction.includes('subscription') || eventAction.includes('preapproval')) {
     if (resourceStatus === 'authorized') {
       await activateSubscription({ userId, plan, mercadoPagoSubscriptionId: subscriptionId });
       return { processed: true, event: 'subscription_activated', userId, plan };

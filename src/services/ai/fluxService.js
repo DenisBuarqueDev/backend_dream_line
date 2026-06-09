@@ -1,9 +1,12 @@
 const axios = require('axios');
-const fs = require('fs-extra');
 const path = require('path');
+const fs = require('fs-extra');
 const { AI_PROVIDERS } = require('../../config/aiProviders');
 const cloudinaryService = require('../cloudinaryService');
 const deepseekService = require('./deepseekService');
+
+const devLog = process.env.NODE_ENV !== 'production' ? console.log : () => {};
+const devWarn = process.env.NODE_ENV !== 'production' ? console.warn : () => {};
 
 const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
 const BLOCKED_CONTENT_TYPES = ['text/html', 'application/json', 'text/plain'];
@@ -83,20 +86,20 @@ function buildPrompt(interpretation, emotions = [], additionalContext = '') {
 async function generateDreamImage(interpretation, emotions = [], context = {}) {
   const promptPt = interpretation;
   const contextPt = context.additionalContext || '';
-  console.log('📝 Prompt PT:', promptPt.substring(0, 200));
+  devLog('📝 Prompt PT:', promptPt.substring(0, 200));
 
   const promptEn = await deepseekService.translateToEnglish(promptPt);
   const contextEn = contextPt
     ? await deepseekService.translateToEnglish(contextPt)
     : '';
-  console.log('📝 Prompt EN:', promptEn.substring(0, 200));
+  devLog('📝 Prompt EN:', promptEn.substring(0, 200));
 
   const prompt = buildPrompt(promptEn, emotions, contextEn);
 
   const config = AI_PROVIDERS.flux.primary;
   const apiKey = process.env.FLUX_API_KEY || process.env.REPLICATE_API_KEY;
 
-  console.log('📤 Prompt FLUX:', prompt.substring(0, 200));
+  devLog('📤 Prompt FLUX:', prompt.substring(0, 200));
 
   if (!apiKey) {
     console.error('❌ FLUX_API_KEY não configurada');
@@ -109,7 +112,7 @@ async function generateDreamImage(interpretation, emotions = [], context = {}) {
   }
 
   const requestFn = async () => {
-    console.log('🎨 Provider: Replicate (FLUX)');
+    devLog('🎨 Provider: Replicate (FLUX)');
     const response = await axios({
       url: config.url,
       method: 'POST',
@@ -131,7 +134,7 @@ async function generateDreamImage(interpretation, emotions = [], context = {}) {
       validateStatus: (status) => status < 500,
     });
 
-    console.log('🎨 Status Replicate:', response.status);
+    devLog('🎨 Status Replicate:', response.status);
 
     if (response.status === 429) {
       throw Object.assign(new Error('Limite de uso ou créditos insuficientes na Replicate API'), {
@@ -146,13 +149,13 @@ async function generateDreamImage(interpretation, emotions = [], context = {}) {
     }
 
     const prediction = response.data;
-    console.log('📥 Resposta FLUX (primeiro 400 chars):', JSON.stringify(prediction).substring(0, 400));
+    devLog('📥 Resposta FLUX (primeiro 400 chars):', JSON.stringify(prediction).substring(0, 400));
 
     if (prediction.urls && prediction.urls.get) {
-      console.log('🔗 URL de polling Replicate:', prediction.urls.get);
+      devLog('🔗 URL de polling Replicate:', prediction.urls.get);
       const result = await pollPrediction(prediction.urls.get, apiKey);
       const imageUrl = result.output?.[0] || null;
-      console.log('🔗 URL da imagem gerada (output[0]):', imageUrl);
+      devLog('🔗 URL da imagem gerada (output[0]):', imageUrl);
       return {
         imageUrl,
         prompt,
@@ -161,7 +164,7 @@ async function generateDreamImage(interpretation, emotions = [], context = {}) {
     }
 
     const imageUrl = prediction.output?.[0] || null;
-    console.log('🔗 URL da imagem (resposta direta):', imageUrl);
+    devLog('🔗 URL da imagem (resposta direta):', imageUrl);
     return {
       imageUrl,
       prompt,
@@ -170,9 +173,9 @@ async function generateDreamImage(interpretation, emotions = [], context = {}) {
   };
 
   try {
-    console.log('🎨 FLUX: enviando requisição para Replicate...');
+    devLog('🎨 FLUX: enviando requisição para Replicate...');
     const result = await executeWithRetry(requestFn, AI_PROVIDERS.flux.retries);
-    console.log('✅ FLUX: imagem gerada com sucesso');
+    devLog('✅ FLUX: imagem gerada com sucesso');
 
     if (result.imageUrl) {
       const cloudinaryResult = await uploadToCloudinaryFromUrl(result.imageUrl);
@@ -191,7 +194,7 @@ async function generateDreamImage(interpretation, emotions = [], context = {}) {
     console.error('❌ Data:', error.response?.data || error.message);
 
     if (fluxStatus === 429) {
-      console.log('⚠️ FLUX rate limitado, tentando fallback...');
+      devLog('⚠️ FLUX rate limitado, tentando fallback...');
       const fallbackResult = await fallbackGeneration(prompt, error.message);
       if (fallbackResult.imageUrl) return fallbackResult;
       fallbackResult.provider = 'replicate';
@@ -200,25 +203,25 @@ async function generateDreamImage(interpretation, emotions = [], context = {}) {
       return fallbackResult;
     }
 
-    console.log('⚠️ fallback ativado: tentando Stability AI...');
+    devLog('⚠️ fallback ativado: tentando Stability AI...');
     return await fallbackGeneration(prompt, error.message);
   }
 }
 
 async function uploadToCloudinaryFromUrl(imageUrl) {
   if (!cloudinaryService.isConfigured()) {
-    console.log('☁ Cloudinary não configurado, usando URL original');
+    devLog('☁ Cloudinary não configurado, usando URL original');
     return null;
   }
 
-  console.log('☁ Iniciando download da imagem:', imageUrl);
+  devLog('☁ Iniciando download da imagem:', imageUrl);
 
   const tempDir = path.join(__dirname, '..', '..', '..', 'temp', 'generated');
   await fs.ensureDir(tempDir);
   const tempFilePath = path.join(tempDir, `cloudinary_upload_${Date.now()}.png`);
 
   try {
-    console.log('☁ Provider: Cloudinary (upload)');
+    devLog('☁ Provider: Cloudinary (upload)');
     const response = await axios({
       url: imageUrl,
       method: 'GET',
@@ -227,14 +230,14 @@ async function uploadToCloudinaryFromUrl(imageUrl) {
       validateStatus: (status) => status < 500,
     });
 
-    console.log('☁ Status download image:', response.status);
+    devLog('☁ Status download image:', response.status);
 
     if (response.status === 429) {
       throw Object.assign(new Error('Rate limit no download da imagem'), { status: 429, provider: 'cloudinary' });
     }
 
     const contentType = response.headers['content-type'] || '';
-    console.log('☁ Content-Type recebido:', contentType);
+    devLog('☁ Content-Type recebido:', contentType);
 
     const isBlocked = BLOCKED_CONTENT_TYPES.some(t => contentType.includes(t));
     if (isBlocked) {
@@ -246,7 +249,7 @@ async function uploadToCloudinaryFromUrl(imageUrl) {
 
     const isAllowed = ALLOWED_IMAGE_TYPES.some(t => contentType.includes(t));
     if (!isAllowed) {
-      console.warn('☁ Content-Type não reconhecido como imagem:', contentType, '- tentando upload mesmo assim');
+      devWarn('☁ Content-Type não reconhecido como imagem:', contentType, '- tentando upload mesmo assim');
     }
 
     await fs.writeFile(tempFilePath, Buffer.from(response.data));
@@ -264,11 +267,11 @@ async function uploadToCloudinaryFromUrl(imageUrl) {
       throw new Error('Arquivo baixado não é uma imagem válida (magic bytes não correspondem)');
     }
 
-    console.log('☁ Imagem validada com sucesso (magic bytes):', headerHex);
+    devLog('☁ Imagem validada com sucesso (magic bytes):', headerHex);
 
     const result = await cloudinaryService.uploadDreamImage(tempFilePath);
-    console.log('☁ URL Cloudinary final:', result.url);
-    console.log('☁ Public ID Cloudinary:', result.publicId);
+    devLog('☁ URL Cloudinary final:', result.url);
+    devLog('☁ Public ID Cloudinary:', result.publicId);
     return result;
   } catch (error) {
     const cloudStatus = error.status || error.response?.status || 500;
@@ -299,7 +302,7 @@ async function pollPrediction(url, apiKey, maxAttempts = 30) {
     }
 
     const predStatus = response.data.status;
-    console.log(`⏳ Polling Replicate tentativa ${i + 1}/${maxAttempts}: status=${predStatus}, http=${response.status}`);
+    devLog(`⏳ Polling Replicate tentativa ${i + 1}/${maxAttempts}: status=${predStatus}, http=${response.status}`);
     if (predStatus === 'succeeded') return response.data;
     if (predStatus === 'failed') throw new Error(`FLUX prediction failed: ${response.data.error}`);
 
@@ -314,7 +317,7 @@ async function executeWithRetry(requestFn, retries = 2) {
     try {
       return await requestFn();
     } catch (error) {
-      console.warn(`⚠️ Tentativa ${attempt}/${retries} falhou:`, error.message, '| status:', error.status || error.response?.status);
+      devWarn(`⚠️ Tentativa ${attempt}/${retries} falhou:`, error.message, '| status:', error.status || error.response?.status);
       if (error.status === 429) throw error;
       if (attempt === retries) throw error;
       await new Promise(resolve => setTimeout(resolve, delay * attempt));
@@ -333,7 +336,7 @@ async function fallbackGeneration(prompt, errorMessage) {
       form.append('prompt', prompt);
       form.append('output_format', 'png');
 
-      console.log('🎨 Provider: Stability AI');
+      devLog('🎨 Provider: Stability AI');
       const response = await axios({
         url: fallback.url,
         method: 'POST',
@@ -348,12 +351,37 @@ async function fallbackGeneration(prompt, errorMessage) {
         validateStatus: (status) => status < 500,
       });
 
-      console.log('🎨 Status Stability:', response.status);
+      devLog('🎨 Status Stability:', response.status);
 
-      if (response.status === 429) {
-        throw Object.assign(new Error('Limite de uso ou créditos insuficientes na Stability AI'), {
-          status: 429, provider: 'stability',
-        });
+      const contentType = response.headers['content-type'] || '';
+      const isJsonResponse = contentType.includes('application/json');
+
+      if (isJsonResponse) {
+        const errorBody = Buffer.from(response.data).toString('utf-8');
+        let errorData;
+        try {
+          errorData = JSON.parse(errorBody);
+        } catch {
+          errorData = { errors: [errorBody] };
+        }
+        const errorMsg = errorData?.errors?.[0] || errorData?.message || 'Erro desconhecido na Stability AI';
+        console.error('❌ Stability AI retornou erro:', errorMsg);
+        return {
+          imageUrl: null,
+          error: errorMsg,
+          status: response.status,
+          provider: 'stability',
+        };
+      }
+
+      if (response.status !== 200) {
+        console.error('❌ Stability AI retornou status:', response.status);
+        return {
+          imageUrl: null,
+          error: `Stability AI retornou status ${response.status}`,
+          status: response.status,
+          provider: 'stability',
+        };
       }
 
       const buffer = Buffer.from(response.data);
@@ -364,8 +392,8 @@ async function fallbackGeneration(prompt, errorMessage) {
       const filepath = path.join(tempDir, filename);
       await fs.writeFile(filepath, buffer);
 
-      console.log('✅ Stability AI online');
-      console.log('📁 Arquivo gerado:', filepath, `(${buffer.length} bytes)`);
+      devLog('✅ Stability AI online');
+      devLog('📁 Arquivo gerado:', filepath, `(${buffer.length} bytes)`);
 
       let cloudinaryUrl = null;
       let cloudinaryPublicId = null;
@@ -379,14 +407,13 @@ async function fallbackGeneration(prompt, errorMessage) {
           console.error('☁ Erro upload Cloudinary (fallback):', cloudError.message);
         }
       } else {
-        console.log('☁ Cloudinary não configurado');
+        devLog('☁ Cloudinary não configurado');
       }
 
       await fs.remove(filepath);
-      console.log('📁 Arquivo local removido');
+      devLog('📁 Arquivo local removido');
 
       const imageUrl = cloudinaryUrl || `data:image/png;base64,${base64}`;
-      console.log('📁 URL final da imagem:', imageUrl);
 
       return {
         imageUrl,
