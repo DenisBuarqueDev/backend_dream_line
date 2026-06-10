@@ -30,7 +30,7 @@ async function getPayment(paymentId) {
 
 async function createCheckoutPreference({ userId, userEmail }) {
   const amount = parseFloat(process.env.MERCADOPAGO_PREMIUM_AMOUNT || '24.90');
-  const backUrl = process.env.FRONTEND_URL || 'https://frontend-dream-line.vercel.app';
+  const backUrl = process.env.FRONTEND_URL || 'https://dream-line.vercel.app';
 
   const body = {
     items: [{
