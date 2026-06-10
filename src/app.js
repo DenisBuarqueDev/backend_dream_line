@@ -7,6 +7,7 @@ const securityMiddleware = require('./middleware/securityMiddleware');
 const errorMiddleware = require('./middleware/errorMiddleware');
 const path = require('path');
 const { logEnvStatus } = require('./utils/envValidator');
+const { startScheduler } = require('./services/notificationScheduler');
 
 const app = express();
 
@@ -61,6 +62,7 @@ if (process.env.NODE_ENV !== 'production') {
 app.use('/api/health', require('./routes/healthRoutes'));
 app.use('/api/subscription', require('./routes/subscriptionRoutes'));
 app.use('/api/payments', require('./routes/paymentRoutes'));
+app.use('/api/notifications', require('./routes/notificationRoutes'));
 
 if (process.env.NODE_ENV !== 'production') {
   app.get('/api/debug/image-providers', (_req, res) => {
@@ -120,6 +122,8 @@ app.listen(PORT, async () => {
   } catch (err) {
     console.error('[Expiry] Erro ao expirar assinaturas:', err.message);
   }
+
+  startScheduler();
 
   console.log(`Servidor rodando na porta ${PORT}`);
   console.log(`Ambiente: ${process.env.NODE_ENV || 'development'}`);

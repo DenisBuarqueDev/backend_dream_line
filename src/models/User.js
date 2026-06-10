@@ -93,6 +93,26 @@ const UserSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now
+  },
+  notificationsEnabled: {
+    type: Boolean,
+    default: false
+  },
+  fcmToken: {
+    type: String,
+    default: null
+  },
+  notificationTimes: {
+    type: [String],
+    default: ["07:00", "21:00"]
+  },
+  lastNotificationSent: {
+    type: Date,
+    default: null
+  },
+  notificationPrompted: {
+    type: Boolean,
+    default: false
   }
 });
 
