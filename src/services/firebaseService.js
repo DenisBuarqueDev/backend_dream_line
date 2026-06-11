@@ -8,7 +8,7 @@ const serviceAccount = {
 
 if (serviceAccount.projectId && serviceAccount.privateKey && serviceAccount.clientEmail) {
   admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
+    credential: admin.cert(serviceAccount),
   });
   console.log('🔥 Firebase Admin inicializado com sucesso');
 } else {

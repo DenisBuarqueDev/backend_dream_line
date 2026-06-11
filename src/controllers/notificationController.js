@@ -49,7 +49,7 @@ async function unregisterToken(req, res) {
 
 async function updateSettings(req, res) {
   try {
-    const { notificationsEnabled, notificationTimes } = req.body;
+    const { notificationsEnabled, notificationTimes, notificationPrompted } = req.body;
 
     const user = await User.findById(req.userId);
     if (!user) {
@@ -58,6 +58,10 @@ async function updateSettings(req, res) {
 
     if (typeof notificationsEnabled === 'boolean') {
       user.notificationsEnabled = notificationsEnabled;
+    }
+
+    if (typeof notificationPrompted === 'boolean') {
+      user.notificationPrompted = notificationPrompted;
     }
 
     if (notificationTimes && Array.isArray(notificationTimes)) {
