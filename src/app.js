@@ -63,6 +63,9 @@ app.use('/api/health', require('./routes/healthRoutes'));
 app.use('/api/subscription', require('./routes/subscriptionRoutes'));
 app.use('/api/payments', require('./routes/paymentRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
+app.use('/api/emotions', require('./routes/emotionInsightsRoutes'));
+app.use('/api/emotions', require('./routes/emotionRoutes'));
+
 
 if (process.env.NODE_ENV !== 'production') {
   app.get('/api/debug/image-providers', (_req, res) => {
