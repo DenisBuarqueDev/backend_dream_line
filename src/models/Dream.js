@@ -46,6 +46,11 @@ const DreamSchema = new mongoose.Schema({
     horaAcordar: String,
     duracaoHoras: Number
   },
+  dreamCategory: {
+    type: String,
+    enum: ['Perseguição', 'Queda', 'Água', 'Família', 'Trabalho', 'Morte', 'Dinheiro', 'Viagem', 'Relacionamento', 'Outros'],
+    default: 'Outros'
+  },
   imageUrl: {
     type: String
   },

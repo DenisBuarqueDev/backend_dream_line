@@ -63,6 +63,7 @@ app.use('/api/health', require('./routes/healthRoutes'));
 app.use('/api/subscription', require('./routes/subscriptionRoutes'));
 app.use('/api/payments', require('./routes/paymentRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
+app.use('/api/insights', require('./routes/dreamEmotionCorrelationRoutes'));
 app.use('/api/emotions', require('./routes/emotionInsightsRoutes'));
 app.use('/api/emotions', require('./routes/emotionRoutes'));
 
