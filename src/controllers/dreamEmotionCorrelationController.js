@@ -1,7 +1,8 @@
 const Dream = require('../models/Dream');
 const Emotion = require('../models/EmotionJournal');
-const { DREAM_CATEGORIES } = require('../services/dreamCategorizationService');
+const { categorizeDream, DREAM_CATEGORIES } = require('../services/dreamCategorizationService');
 const asyncHandler = require('../middleware/asyncHandler');
+const { successResponse } = require('../utils/response');
 
 function getDateRange(days) {
   const end = new Date();
@@ -10,145 +11,154 @@ function getDateRange(days) {
   return { start, end };
 }
 
-function buildCorrelationTable(dreams, emotions) {
-  const emotionOrder = [...new Set(emotions.map(e => e.emotion))];
-  const table = {};
-  const emotionCounts = {};
-  const dreamCategoryCounts = {};
-  let totalDreams = 0;
-
-  for (const cat of DREAM_CATEGORIES) {
-    dreamCategoryCounts[cat] = 0;
-  }
-  for (const em of emotionOrder) {
-    table[em] = {};
-    emotionCounts[em] = 0;
-    for (const cat of DREAM_CATEGORIES) {
-      table[em][cat] = 0;
-    }
-  }
-
-  const sortedEmotions = [...emotions]
-    .filter(e => e.createdAt)
-    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-
-  for (const dream of dreams) {
-    if (!dream.dreamCategory) continue;
-    const cat = dream.dreamCategory;
-    if (!DREAM_CATEGORIES.includes(cat)) continue;
-    dreamCategoryCounts[cat] = (dreamCategoryCounts[cat] || 0) + 1;
-    totalDreams++;
-
-    const dreamDate = dream.createdAt ? new Date(dream.createdAt) : new Date();
-    const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
-
-    let closest = null;
-    let closestDiff = Infinity;
-
-    for (const em of sortedEmotions) {
-      const emDate = new Date(em.createdAt);
-      const diff = dreamDate - emDate;
-      if (diff >= 0 && diff <= THREE_DAYS_MS && diff < closestDiff) {
-        closest = em;
-        closestDiff = diff;
-      }
-    }
-
-    if (closest) {
-      emotionCounts[closest.emotion] = (emotionCounts[closest.emotion] || 0) + 1;
-      table[closest.emotion][cat] = (table[closest.emotion][cat] || 0) + 1;
-    }
-  }
-
-  const correlationRows = [];
-  for (const em of emotionOrder) {
-    const total = emotionCounts[em] || 0;
-    if (total === 0) continue;
-    const row = { emotion: em };
-    for (const cat of DREAM_CATEGORIES) {
-      const count = table[em]?.[cat] || 0;
-      row[cat] = total > 0 ? Math.round((count / total) * 100) : 0;
-    }
-    correlationRows.push(row);
-  }
-
-  const emotionDistribution = {};
-  for (const em of emotionOrder) {
-    const total = emotionCounts[em] || 0;
-    if (total > 0) {
-      emotionDistribution[em] = Math.round((total / Math.max(1, totalDreams)) * 100);
-    }
-  }
-
-  return { correlationRows, emotionDistribution, dreamCategoryCounts, totalDreams, emotionOrder };
-}
-
-function generateInsights(corrData) {
-  const insights = [];
-  const { correlationRows, dreamCategoryCounts, totalDreams, emotionOrder } = corrData;
-
-  if (totalDreams === 0) {
-    return ['Registre sonhos e emoções para começar a ver correlações.'];
-  }
-
-  const topCategory = Object.entries(dreamCategoryCounts).sort((a, b) => b[1] - a[1])[0];
-  if (topCategory && topCategory[1] > 0) {
-    insights.push(
-      `📊 Categoria de sonho mais frequente: **${topCategory[0]}** (${topCategory[1]} sonhos, ${Math.round((topCategory[1] / totalDreams) * 100)}% do total)`
-    );
-  }
-
-  for (const row of correlationRows) {
-    const maxCat = DREAM_CATEGORIES.reduce((best, c) =>
-      (row[c] || 0) > (best?.[1] || 0) ? [c, row[c]] : best,
-      null
-    );
-    if (maxCat && maxCat[1] >= 40) {
-      insights.push(
-        `🔗 Quando você sente **${row.emotion}**, ${maxCat[1]}% dos sonhos são sobre **${maxCat[0]}**`
-      );
-    }
-  }
-
-  const topEmotion = emotionOrder
-    .map(em => ({ emotion: em, count: correlationRows.find(r => r.emotion === em) ? Object.values(correlationRows.find(r => r.emotion === em)).reduce((s, v) => s + (typeof v === 'number' ? v : 0), 0) : 0 }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 3);
-
-  if (topEmotion.length > 0) {
-    const list = topEmotion.filter(e => e.count > 0).map(e => e.emotion).join(', ');
-    if (list) insights.push(`💭 Emoções mais ativas nos sonhos: **${list}**`);
-  }
-
-  return insights.length > 0 ? insights : ['Continue registrando para descobrir padrões entre seus sonhos e emoções.'];
-}
-
 exports.getCorrelations = asyncHandler(async (req, res) => {
   const days = parseInt(req.query.days) || 30;
   const { start, end } = getDateRange(days);
-  const userId = req.user._id;
+  const userId = req.userId;
 
+  // ── 1. Buscar dados ─────────────────────────────────────────
   const [dreams, emotions] = await Promise.all([
-    Dream.find({
-      userId,
-      createdAt: { $gte: start, $lte: end },
-    }).select('dreamCategory createdAt textoSonho').lean(),
-    Emotion.find({
-      userId,
-      createdAt: { $gte: start, $lte: end },
-    }).select('emotion intensity createdAt').lean(),
+    Dream.find({ userId, createdAt: { $gte: start, $lte: end } })
+      .select('dreamCategory createdAt textoSonho')
+      .lean(),
+    Emotion.find({ userId, createdAt: { $gte: start, $lte: end } })
+      .select('emotion createdAt')
+      .lean(),
   ]);
 
-  const corrData = buildCorrelationTable(dreams, emotions);
-  const insights = generateInsights(corrData);
+  console.log('📊 Dreams encontrados:', dreams.length);
+  console.log('📊 EmotionJournal encontrados:', emotions.length);
 
-  res.json({
+  // ── 2. Auto-categorizar sonhos sem categoria ────────────────
+  // Only auto-categorize when dreamCategory is truly absent (pre-migration docs).
+  // Dreams with default 'Outros' are kept as-is to avoid re-processing every request.
+  let autoCatCount = 0;
+  for (const dream of dreams) {
+    if (dream.dreamCategory === undefined || dream.dreamCategory === null) {
+      const text = (dream.textoSonho || '').trim();
+      if (text) {
+        const category = await categorizeDream(text);
+        await Dream.updateOne({ _id: dream._id }, { dreamCategory: category });
+        dream.dreamCategory = category;
+        autoCatCount++;
+      } else {
+        dream.dreamCategory = 'Outros';
+      }
+    }
+  }
+  if (autoCatCount > 0) {
+    console.log('🤖 Categorizados automaticamente:', autoCatCount);
+  }
+
+  // ── 3. Correlacionar (±3 dias) ──────────────────────────────
+  const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+
+  // emotion → dreamCategory → count
+  const corrMap = {};
+  // emotion → how many distinct dreams it touched
+  const emotionDreamTotal = {};
+
+  for (const dream of dreams) {
+    if (!dream.dreamCategory) continue;
+    const dreamMs = new Date(dream.createdAt).getTime();
+
+    // Find all emotions within ±3 days
+    const matched = emotions.filter(e => {
+      const emMs = new Date(e.createdAt).getTime();
+      return Math.abs(dreamMs - emMs) <= THREE_DAYS_MS;
+    });
+
+    // Deduplicate by emotion type per dream
+    const uniqueEmotions = [...new Set(matched.map(e => e.emotion))];
+
+    for (const emotion of uniqueEmotions) {
+      if (!corrMap[emotion]) corrMap[emotion] = {};
+      corrMap[emotion][dream.dreamCategory] = (corrMap[emotion][dream.dreamCategory] || 0) + 1;
+      emotionDreamTotal[emotion] = (emotionDreamTotal[emotion] || 0) + 1;
+    }
+  }
+
+  // ── 4. Montar resposta ──────────────────────────────────────
+  const correlations = [];
+
+  for (const [emotion, categories] of Object.entries(corrMap)) {
+    const total = emotionDreamTotal[emotion];
+    for (const [dreamCategory, occurrences] of Object.entries(categories)) {
+      correlations.push({
+        emotion,
+        dreamCategory,
+        occurrences,
+        percentage: Math.round((occurrences / total) * 100),
+      });
+    }
+  }
+
+  correlations.sort((a, b) => b.occurrences - a.occurrences);
+
+  // ── 5. Distribuição de categorias (para o gráfico) ──────────
+  const dreamCategoryCounts = {};
+  for (const cat of DREAM_CATEGORIES) dreamCategoryCounts[cat] = 0;
+  for (const dream of dreams) {
+    if (dream.dreamCategory && DREAM_CATEGORIES.includes(dream.dreamCategory)) {
+      dreamCategoryCounts[dream.dreamCategory]++;
+    }
+  }
+
+  // ── 6. Matriz de calor (emotion × category em %) ────────────
+  const heatEmotions = [...new Set(correlations.map(c => c.emotion))].sort();
+  const heatRows = heatEmotions.map(emotion => {
+    const row = { emotion };
+    for (const cat of DREAM_CATEGORIES) {
+      const found = correlations.find(c => c.emotion === emotion && c.dreamCategory === cat);
+      row[cat] = found ? found.percentage : 0;
+    }
+    return row;
+  });
+
+  // ── 7. Insights ─────────────────────────────────────────────
+  const insights = [];
+
+  if (correlations.length === 0) {
+    insights.push('Nenhuma correlação encontrada no período. Registre emoções próximas aos seus sonhos.');
+  } else {
+    const top = correlations[0];
+    insights.push(
+      `🔗 Maior correlação: **${top.emotion}** → **${top.dreamCategory}** (${top.occurrences} sonhos, ${top.percentage}%)`
+    );
+
+    // Top categoria geral
+    const catEntries = Object.entries(dreamCategoryCounts).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+    if (catEntries.length > 0) {
+      const [topCat, topCount] = catEntries[0];
+      insights.push(
+        `📊 Categoria mais frequente: **${topCat}** (${topCount} sonhos)`
+      );
+    }
+
+    // Emoções com forte correlação (>50%)
+    for (const c of correlations) {
+      if (c.percentage >= 50) {
+        insights.push(
+          `🧠 Quando você sente **${c.emotion}**, ${c.percentage}% dos sonhos são sobre **${c.dreamCategory}**`
+        );
+      }
+    }
+  }
+
+  const categoriesIdentified = Object.entries(dreamCategoryCounts).filter(([, v]) => v > 0).length;
+
+  console.log('📊 Registros correlacionados:', correlations.length);
+  console.log('📊 Categorias identificadas:', categoriesIdentified);
+
+  successResponse(res, {
     days,
-    totalDreams: corrData.totalDreams,
+    totalDreams: dreams.length,
     totalEmotions: emotions.length,
-    dreamCategories: corrData.dreamCategoryCounts,
-    emotionDistribution: corrData.emotionDistribution,
-    correlationTable: corrData.correlationRows,
+    correlatedCount: correlations.length,
+    categoriesIdentified,
+    correlations,
+    dreamCategories: dreamCategoryCounts,
+    correlationTable: heatRows,
     insights,
   });
 });
