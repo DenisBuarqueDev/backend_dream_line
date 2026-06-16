@@ -1,18 +1,39 @@
 const admin = require('firebase-admin');
 
+const parsePrivateKey = (key) => {
+  if (!key) return '';
+  return key
+    .replace(/\\n/g, '\n')
+    .replace(/"/g, '')
+    .trim();
+};
+
 const serviceAccount = {
   projectId: process.env.FIREBASE_PROJECT_ID,
-  privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+  privateKey: parsePrivateKey(process.env.FIREBASE_PRIVATE_KEY),
   clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
 };
 
 if (serviceAccount.projectId && serviceAccount.privateKey && serviceAccount.clientEmail) {
-  admin.initializeApp({
-    credential: admin.cert(serviceAccount),
-  });
-  console.log('🔥 Firebase Admin inicializado com sucesso');
+  try {
+    admin.initializeApp({
+      credential: admin.cert(serviceAccount),
+    });
+    console.log('🔥 Firebase Admin inicializado com sucesso');
+  } catch (error) {
+    console.error('⚠️ Firebase Admin falhou ao inicializar:', error.message);
+    console.error('   Dica: verifique o formato de FIREBASE_PRIVATE_KEY no Render');
+    console.error('   - Deve começar com -----BEGIN PRIVATE KEY-----');
+    console.error('   - Não deve ter aspas extras no início/fim');
+    console.error('   - \\n deve ser convertido para quebras de linha reais');
+  }
 } else {
-  console.warn('⚠️ Firebase Admin não configurado — notificações push desabilitadas');
+  const missing = [];
+  if (!serviceAccount.projectId) missing.push('FIREBASE_PROJECT_ID');
+  if (!serviceAccount.privateKey) missing.push('FIREBASE_PRIVATE_KEY');
+  if (!serviceAccount.clientEmail) missing.push('FIREBASE_CLIENT_EMAIL');
+  console.warn('⚠️ Firebase Admin não configurado — variáveis ausentes:', missing.join(', '));
+  console.warn('   Notificações push desabilitadas');
 }
 
 async function sendPush(token, title, body, data = {}) {
