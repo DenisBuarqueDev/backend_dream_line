@@ -5,7 +5,12 @@ const FEATURE_MESSAGES = {
   generate_image: 'Funcionalidade disponível apenas para plano Premium',
   interpret_dream: 'Limite de interpretações do plano atingido',
   sleep_mode: 'Funcionalidade disponível apenas para plano Premium',
-  weekly_summary: 'Funcionalidade disponível apenas para plano Premium'
+  weekly_summary: 'Funcionalidade disponível apenas para plano Premium',
+  delete_dream: 'Funcionalidade disponível apenas para plano Premium',
+  delete_emotion: 'Funcionalidade disponível apenas para plano Premium',
+  correlations: 'Funcionalidade disponível apenas para plano Premium',
+  notifications: 'Funcionalidade disponível apenas para plano Premium',
+  numerology: 'Funcionalidade disponível apenas para plano Premium'
 };
 
 const checkFeatureAccess = (feature) => {

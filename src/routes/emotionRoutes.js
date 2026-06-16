@@ -9,11 +9,12 @@ const {
   getConversation,
 } = require('../controllers/emotionController');
 const protect = require('../middleware/authMiddleware');
+const { checkFeatureAccess } = require('../middleware/planMiddleware');
 
 router.post('/', protect, createEmotion);
 router.get('/', protect, getEmotions);
 router.get('/:id', protect, getEmotionById);
-router.delete('/:id', protect, deleteEmotion);
+router.delete('/:id', protect, checkFeatureAccess('delete_emotion'), deleteEmotion);
 router.post('/:id/chat', protect, sendChatMessage);
 router.get('/:id/chat', protect, getConversation);
 

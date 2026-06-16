@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const protect = require('../middleware/authMiddleware');
+const User = require('../models/User');
 const aiGateway = require('../services/ai/aiGatewayService');
 
 router.post('/interpret', protect, async (req, res, next) => {
@@ -11,6 +12,20 @@ router.post('/interpret', protect, async (req, res, next) => {
       return res.status(400).json({ error: 'dreamText é obrigatório' });
     }
 
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    if (user.checkExpiry()) {
+      await user.save();
+    }
+
+    const incremented = await user.incrementInterpretationCount();
+    if (!incremented) {
+      return res.status(403).json({ success: false, error: 'Limite de interpretações diárias atingido', code: 'INTERPRETATION_LIMIT_REACHED' });
+    }
+
     const userContext = { sunSign, moonSign, ascendant };
 
     const result = await aiGateway.processDreamPipeline(dreamText, userContext, {
@@ -18,7 +33,7 @@ router.post('/interpret', protect, async (req, res, next) => {
       psychologicalAnalysis: psychologicalAnalysis || false,
     });
 
-    res.json(result);
+    res.json({ ...result, planInfo: user.checkUserPlan() });
   } catch (error) {
     next(error);
   }

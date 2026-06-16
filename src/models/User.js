@@ -8,7 +8,14 @@ const PLAN_LIMITS = {
     canGenerateImage: false,
     canUseSleepMode: false,
     canSeeWeeklySummary: false,
-    canGetFullInterpretation: false
+    canGetFullInterpretation: false,
+    maxInterpretationsPerDay: 3,
+    maxEmotionAnalysesPerDay: 3,
+    canDeleteDream: false,
+    canDeleteEmotion: false,
+    canUseCorrelations: false,
+    canUseNotifications: false,
+    canUseNumerology: false
   },
   premium: {
     maxDreams: 60,
@@ -16,7 +23,14 @@ const PLAN_LIMITS = {
     canGenerateImage: true,
     canUseSleepMode: true,
     canSeeWeeklySummary: true,
-    canGetFullInterpretation: true
+    canGetFullInterpretation: true,
+    maxInterpretationsPerDay: Infinity,
+    maxEmotionAnalysesPerDay: Infinity,
+    canDeleteDream: true,
+    canDeleteEmotion: true,
+    canUseCorrelations: true,
+    canUseNotifications: true,
+    canUseNumerology: true
   }
 };
 
@@ -113,6 +127,22 @@ const UserSchema = new mongoose.Schema({
   notificationPrompted: {
     type: Boolean,
     default: false
+  },
+  interpretationCount: {
+    type: Number,
+    default: 0
+  },
+  interpretationLimitResetAt: {
+    type: Date,
+    default: Date.now
+  },
+  emotionAnalysisCount: {
+    type: Number,
+    default: 0
+  },
+  emotionAnalysisLimitResetAt: {
+    type: Date,
+    default: Date.now
   }
 });
 
@@ -154,6 +184,8 @@ UserSchema.methods.checkUserPlan = function() {
     daysRemaining = Math.max(0, Math.ceil((this.subscription.expiresAt - now) / (1000 * 60 * 60 * 24)));
   }
   
+  const resetPeriod = 24 * 60 * 60 * 1000;
+
   if (this.dreamLimitResetAt && now > this.dreamLimitResetAt) {
     return {
       plan: this.plan,
@@ -165,26 +197,54 @@ UserSchema.methods.checkUserPlan = function() {
       canGenerateImage: limits.canGenerateImage,
       canUseSleepMode: limits.canUseSleepMode,
       canSeeWeeklySummary: limits.canSeeWeeklySummary,
+      canDeleteDream: limits.canDeleteDream,
+      canDeleteEmotion: limits.canDeleteEmotion,
+      canUseCorrelations: limits.canUseCorrelations,
+      canUseNotifications: limits.canUseNotifications,
+      canUseNumerology: limits.canUseNumerology,
       remainingDreams: limits.maxDreams,
       maxDreams: limits.maxDreams,
+      remainingInterpretations: limits.maxInterpretationsPerDay,
+      maxInterpretationsPerDay: limits.maxInterpretationsPerDay,
+      remainingEmotionAnalyses: limits.maxEmotionAnalysesPerDay,
+      maxEmotionAnalysesPerDay: limits.maxEmotionAnalysesPerDay,
       isReset: true
     };
   }
   
-  const remaining = Math.max(0, limits.maxDreams - (this.dreamCount || 0));
-  
+  const remainingDreams = Math.max(0, limits.maxDreams - (this.dreamCount || 0));
+
+  let remainingInterpretations = limits.maxInterpretationsPerDay;
+  if (this.interpretationLimitResetAt && now < this.interpretationLimitResetAt) {
+    remainingInterpretations = Math.max(0, limits.maxInterpretationsPerDay - (this.interpretationCount || 0));
+  }
+
+  let remainingEmotionAnalyses = limits.maxEmotionAnalysesPerDay;
+  if (this.emotionAnalysisLimitResetAt && now < this.emotionAnalysisLimitResetAt) {
+    remainingEmotionAnalyses = Math.max(0, limits.maxEmotionAnalysesPerDay - (this.emotionAnalysisCount || 0));
+  }
+
   return {
     plan: this.plan,
     isPremium,
     daysRemaining,
     premiumSince: this.premiumSince || this.subscription?.startedAt || null,
     premiumExpiresAt: this.premiumExpiresAt || this.subscription?.expiresAt || null,
-    canInterpret: remaining > 0,
+    canInterpret: remainingDreams > 0,
     canGenerateImage: limits.canGenerateImage,
     canUseSleepMode: limits.canUseSleepMode,
     canSeeWeeklySummary: limits.canSeeWeeklySummary,
-    remainingDreams: remaining,
+    canDeleteDream: limits.canDeleteDream,
+    canDeleteEmotion: limits.canDeleteEmotion,
+    canUseCorrelations: limits.canUseCorrelations,
+    canUseNotifications: limits.canUseNotifications,
+    canUseNumerology: limits.canUseNumerology,
+    remainingDreams,
     maxDreams: limits.maxDreams,
+    remainingInterpretations,
+    maxInterpretationsPerDay: limits.maxInterpretationsPerDay,
+    remainingEmotionAnalyses,
+    maxEmotionAnalysesPerDay: limits.maxEmotionAnalysesPerDay,
     isReset: false
   };
 };
@@ -195,7 +255,12 @@ UserSchema.methods.canAccessFeature = function(feature) {
     'generate_image': planInfo.canGenerateImage,
     'interpret_dream': planInfo.canInterpret,
     'sleep_mode': planInfo.canUseSleepMode,
-    'weekly_summary': planInfo.canSeeWeeklySummary
+    'weekly_summary': planInfo.canSeeWeeklySummary,
+    'delete_dream': planInfo.canDeleteDream,
+    'delete_emotion': planInfo.canDeleteEmotion,
+    'correlations': planInfo.canUseCorrelations,
+    'notifications': planInfo.canUseNotifications,
+    'numerology': planInfo.canUseNumerology
   };
   
   return featureMap[feature] || false;
@@ -210,6 +275,46 @@ UserSchema.methods.incrementDreamCount = async function() {
 
   await this.constructor.findByIdAndUpdate(this._id, { $inc: { dreamCount: 1 } });
   this.dreamCount = (this.dreamCount || 0) + 1;
+  return true;
+};
+
+UserSchema.methods.incrementInterpretationCount = async function() {
+  const now = new Date();
+  const resetPeriod = 24 * 60 * 60 * 1000;
+
+  if (this.interpretationLimitResetAt && now > this.interpretationLimitResetAt) {
+    this.interpretationCount = 0;
+    this.interpretationLimitResetAt = new Date(now.getTime() + resetPeriod);
+  }
+
+  const max = this.plan === 'premium' ? Infinity : PLAN_LIMITS.free.maxInterpretationsPerDay;
+
+  if ((this.interpretationCount || 0) >= max) {
+    return false;
+  }
+
+  await this.constructor.findByIdAndUpdate(this._id, { $inc: { interpretationCount: 1 } });
+  this.interpretationCount = (this.interpretationCount || 0) + 1;
+  return true;
+};
+
+UserSchema.methods.incrementEmotionAnalysisCount = async function() {
+  const now = new Date();
+  const resetPeriod = 24 * 60 * 60 * 1000;
+
+  if (this.emotionAnalysisLimitResetAt && now > this.emotionAnalysisLimitResetAt) {
+    this.emotionAnalysisCount = 0;
+    this.emotionAnalysisLimitResetAt = new Date(now.getTime() + resetPeriod);
+  }
+
+  const max = this.plan === 'premium' ? Infinity : PLAN_LIMITS.free.maxEmotionAnalysesPerDay;
+
+  if ((this.emotionAnalysisCount || 0) >= max) {
+    return false;
+  }
+
+  await this.constructor.findByIdAndUpdate(this._id, { $inc: { emotionAnalysisCount: 1 } });
+  this.emotionAnalysisCount = (this.emotionAnalysisCount || 0) + 1;
   return true;
 };
 

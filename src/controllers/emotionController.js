@@ -11,6 +11,21 @@ exports.createEmotion = async (req, res, next) => {
       return errorResponse(res, 'O texto do sentimento é obrigatório.', 400);
     }
 
+    const User = require('../models/User');
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return errorResponse(res, 'Usuário não encontrado', 404);
+    }
+
+    if (user.checkExpiry()) {
+      await user.save();
+    }
+
+    const incremented = await user.incrementEmotionAnalysisCount();
+    if (!incremented) {
+      return errorResponse(res, 'Limite de análises emocionais diárias atingido', 403);
+    }
+
     const analysis = await emotionAnalysisService.analyzeEmotion(text.trim());
 
     const emotion = await EmotionJournal.create({
