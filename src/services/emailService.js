@@ -1,49 +1,44 @@
-const nodemailer = require('nodemailer');
-
-function createTransport() {
-  const { SMTP_USER, SMTP_PASS } = process.env;
-
-  if (!SMTP_USER || !SMTP_PASS) {
-    console.error('SMTP_USER/SMTP_PASS não configurados — e-mail não enviado');
-    return null;
-  }
-
-  return nodemailer.createTransport({
-    service: 'gmail',
-    auth: { user: SMTP_USER, pass: SMTP_PASS },
-  });
-}
+const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
+const FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL || 'denisprogramadorweb@gmail.com';
 
 async function sendEmail({ to, subject, html }) {
-  const transporter = createTransport();
-  if (!transporter) return false;
+  if (!SENDGRID_API_KEY) {
+    console.error('SENDGRID_API_KEY não configurada — e-mail não enviado');
+    return false;
+  }
 
-  const FROM_EMAIL = process.env.SMTP_USER || 'noreply@dreamline.app';
-
-  console.log(`📧 Enviando e-mail via SMTP...`);
-  console.log(`   Host: ${process.env.SMTP_HOST}:${process.env.SMTP_PORT || 587}`);
-  console.log(`   User: ${process.env.SMTP_USER}`);
+  console.log(`📧 Enviando e-mail via SendGrid...`);
   console.log(`   From: ${FROM_EMAIL}`);
   console.log(`   To:   ${to}`);
   console.log(`   Subject: ${subject}`);
 
   try {
-    const info = await transporter.sendMail({ from: FROM_EMAIL, to, subject, html });
+    const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${SENDGRID_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        personalizations: [{ to: [{ email: to }] }],
+        from: { email: FROM_EMAIL },
+        subject,
+        content: [{ type: 'text/html', value: html }],
+      }),
+    });
 
-    console.log(`✅ Nodemailer sendMail concluído`);
-    console.log(`   accepted:  ${JSON.stringify(info.accepted)}`);
-    console.log(`   rejected:  ${JSON.stringify(info.rejected)}`);
-    console.log(`   response:  ${info.response}`);
-    console.log(`   messageId: ${info.messageId}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`❌ SendGrid respondeu com status ${response.status}:`);
+      console.error(`   ${errorText}`);
+      return false;
+    }
 
+    console.log(`✅ SendGrid: e-mail aceito (status ${response.status})`);
     return true;
   } catch (error) {
-    console.error(`❌ Nodemailer sendMail lançou exceção:`);
+    console.error(`❌ SendGrid lançou exceção:`);
     console.error(`   message: ${error.message}`);
-    console.error(`   code:    ${error.code}`);
-    console.error(`   command: ${error.command}`);
-    if (error.response) console.error(`   response: ${error.response}`);
-
     return false;
   }
 }
@@ -95,7 +90,7 @@ async function sendVerificationEmail(email, token) {
   });
 
   if (sent) {
-    console.log('✅ E-mail enviado com sucesso para', email);
+    console.log('✅ E-mail de verificação enviado com sucesso para', email);
   } else {
     console.log('⚠️  Falha ao enviar e-mail — use o link acima manualmente');
   }
