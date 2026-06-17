@@ -1,33 +1,28 @@
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'noreply@dreamline.app';
+const nodemailer = require('nodemailer');
 
-async function sendEmail({ to, subject, html }) {
-  if (!RESEND_API_KEY) {
-    console.error('RESEND_API_KEY não definida — e-mail não enviado');
-    return false;
+function createTransport() {
+  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env;
+
+  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
+    console.error('SMTP_HOST/SMTP_USER/SMTP_PASS não configurados — e-mail não enviado');
+    return null;
   }
 
+  return nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: Number(SMTP_PORT) || 587,
+    secure: Number(SMTP_PORT) === 465,
+    auth: { user: SMTP_USER, pass: SMTP_PASS },
+  });
+}
+
+async function sendEmail({ to, subject, html }) {
+  const transporter = createTransport();
+  if (!transporter) return false;
+
   try {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: FROM_EMAIL,
-        to,
-        subject,
-        html,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.text();
-      console.error('Erro ao enviar e-mail via Resend:', errorData);
-      return false;
-    }
-
+    const FROM_EMAIL = process.env.SMTP_USER || 'noreply@dreamline.app';
+    await transporter.sendMail({ from: FROM_EMAIL, to, subject, html });
     return true;
   } catch (error) {
     console.error('Erro ao enviar e-mail:', error.message);
