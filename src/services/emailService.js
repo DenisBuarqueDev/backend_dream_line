@@ -34,6 +34,8 @@ async function sendVerificationEmail(email, token) {
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
   const verificationLink = `${frontendUrl}/verify-email?token=${token}`;
 
+  console.log('🔗 Link de verificação:', verificationLink);
+
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px; background-color: #0f0b1a; border-radius: 16px;">
       <div style="text-align: center; margin-bottom: 32px;">
@@ -68,11 +70,19 @@ async function sendVerificationEmail(email, token) {
     </div>
   `;
 
-  return sendEmail({
+  const sent = await sendEmail({
     to: email,
     subject: 'Verifique seu e-mail',
     html,
   });
+
+  if (sent) {
+    console.log('✅ E-mail enviado com sucesso para', email);
+  } else {
+    console.log('⚠️  Falha ao enviar e-mail — use o link acima manualmente');
+  }
+
+  return sent;
 }
 
 module.exports = { sendVerificationEmail };
