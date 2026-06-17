@@ -1,7 +1,9 @@
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
 const User = require("../models/User");
 const { errorResponse, successResponse } = require("../utils/response");
+const { sendVerificationEmail } = require("../services/emailService");
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "7d" });
@@ -30,33 +32,26 @@ const register = async (req, res, next) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const user = await User.create({ 
-      email: email.toLowerCase(), 
+
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    const user = await User.create({
+      email: email.toLowerCase(),
       password: hashedPassword,
-      dreamLimitResetAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+      dreamLimitResetAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      emailVerified: false,
+      emailVerificationToken: verificationToken,
+      emailVerificationExpires: verificationExpires,
     });
 
-      const token = generateToken(user._id);
-    const planInfo = user.checkUserPlan();
+    await sendVerificationEmail(user.email, verificationToken);
 
     return successResponse(
       res,
       {
-        message: "User registered successfully",
-        token,
-        user: { 
-          id: user._id, 
-          email: user.email, 
-          plan: user.plan,
-          dreamCount: user.dreamCount,
-          dreamLimitResetAt: user.dreamLimitResetAt,
-          remainingDreams: planInfo.remainingDreams,
-          maxDreams: planInfo.maxDreams,
-          canGenerateImage: planInfo.canGenerateImage,
-          canUseSleepMode: planInfo.canUseSleepMode,
-          canSeeWeeklySummary: planInfo.canSeeWeeklySummary,
-          subscription: user.subscription
-        },
+        message: "User registered successfully. Please verify your email.",
+        email: user.email,
       },
       201,
     );
@@ -83,15 +78,19 @@ const login = async (req, res, next) => {
       return errorResponse(res, "Invalid credentials", 401);
     }
 
+    if (!user.emailVerified) {
+      return errorResponse(res, "Verifique seu e-mail antes de acessar o Dream Line.", 403);
+    }
+
     const planInfo = user.checkUserPlan();
     const token = generateToken(user._id);
 
     return successResponse(res, {
       message: "Login successful",
       token,
-      user: { 
-        id: user._id, 
-        email: user.email, 
+      user: {
+        id: user._id,
+        email: user.email,
         plan: user.plan,
         dreamCount: user.dreamCount,
         dreamLimitResetAt: user.dreamLimitResetAt,
@@ -100,7 +99,7 @@ const login = async (req, res, next) => {
         canGenerateImage: planInfo.canGenerateImage,
         canUseSleepMode: planInfo.canUseSleepMode,
         canSeeWeeklySummary: planInfo.canSeeWeeklySummary,
-        subscription: user.subscription
+        subscription: user.subscription,
       },
     });
   } catch (error) {
@@ -108,4 +107,73 @@ const login = async (req, res, next) => {
   }
 };
 
-module.exports = { register, login };
+const verifyEmail = async (req, res, next) => {
+  try {
+    const { token } = req.query;
+
+    if (!token) {
+      return errorResponse(res, "Token de verificação não fornecido.", 400);
+    }
+
+    const user = await User.findOne({
+      emailVerificationToken: token,
+      emailVerificationExpires: { $gt: new Date() },
+    });
+
+    if (!user) {
+      return errorResponse(res, "Token de verificação inválido ou expirado.", 400);
+    }
+
+    user.emailVerified = true;
+    user.emailVerificationToken = null;
+    user.emailVerificationExpires = null;
+    await user.save();
+
+    return successResponse(res, {
+      message: "E-mail verificado com sucesso!",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const resendVerification = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return errorResponse(res, "Email is required", 400);
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+
+    if (!user) {
+      return successResponse(res, {
+        message: "Se o e-mail estiver cadastrado, um novo link será enviado.",
+      });
+    }
+
+    if (user.emailVerified) {
+      return successResponse(res, {
+        message: "Se o e-mail estiver cadastrado, um novo link será enviado.",
+      });
+    }
+
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    user.emailVerificationToken = verificationToken;
+    user.emailVerificationExpires = verificationExpires;
+    await user.save();
+
+    await sendVerificationEmail(user.email, verificationToken);
+
+    return successResponse(res, {
+      message: "Se o e-mail estiver cadastrado, um novo link será enviado.",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { register, login, verifyEmail, resendVerification };

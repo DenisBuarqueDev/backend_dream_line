@@ -143,6 +143,18 @@ const UserSchema = new mongoose.Schema({
   emotionAnalysisLimitResetAt: {
     type: Date,
     default: Date.now
+  },
+  emailVerified: {
+    type: Boolean,
+    default: false
+  },
+  emailVerificationToken: {
+    type: String,
+    default: null
+  },
+  emailVerificationExpires: {
+    type: Date,
+    default: null
   }
 });
 
