@@ -1,17 +1,15 @@
 const nodemailer = require('nodemailer');
 
 function createTransport() {
-  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env;
+  const { SMTP_USER, SMTP_PASS } = process.env;
 
-  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
-    console.error('SMTP_HOST/SMTP_USER/SMTP_PASS não configurados — e-mail não enviado');
+  if (!SMTP_USER || !SMTP_PASS) {
+    console.error('SMTP_USER/SMTP_PASS não configurados — e-mail não enviado');
     return null;
   }
 
   return nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: Number(SMTP_PORT) || 587,
-    secure: Number(SMTP_PORT) === 465,
+    service: 'gmail',
     auth: { user: SMTP_USER, pass: SMTP_PASS },
   });
 }
@@ -51,7 +49,7 @@ async function sendEmail({ to, subject, html }) {
 }
 
 async function sendVerificationEmail(email, token) {
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const frontendUrl = process.env.FRONTEND_URL || (process.env.NODE_ENV === 'production' ? 'https://dream-line.vercel.app' : 'http://localhost:5173');
   const verificationLink = `${frontendUrl}/verify-email?token=${token}`;
 
   console.log('🔗 Link de verificação:', verificationLink);
