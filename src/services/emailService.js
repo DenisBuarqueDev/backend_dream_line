@@ -20,12 +20,32 @@ async function sendEmail({ to, subject, html }) {
   const transporter = createTransport();
   if (!transporter) return false;
 
+  const FROM_EMAIL = process.env.SMTP_USER || 'noreply@dreamline.app';
+
+  console.log(`📧 Enviando e-mail via SMTP...`);
+  console.log(`   Host: ${process.env.SMTP_HOST}:${process.env.SMTP_PORT || 587}`);
+  console.log(`   User: ${process.env.SMTP_USER}`);
+  console.log(`   From: ${FROM_EMAIL}`);
+  console.log(`   To:   ${to}`);
+  console.log(`   Subject: ${subject}`);
+
   try {
-    const FROM_EMAIL = process.env.SMTP_USER || 'noreply@dreamline.app';
-    await transporter.sendMail({ from: FROM_EMAIL, to, subject, html });
+    const info = await transporter.sendMail({ from: FROM_EMAIL, to, subject, html });
+
+    console.log(`✅ Nodemailer sendMail concluído`);
+    console.log(`   accepted:  ${JSON.stringify(info.accepted)}`);
+    console.log(`   rejected:  ${JSON.stringify(info.rejected)}`);
+    console.log(`   response:  ${info.response}`);
+    console.log(`   messageId: ${info.messageId}`);
+
     return true;
   } catch (error) {
-    console.error('Erro ao enviar e-mail:', error.message);
+    console.error(`❌ Nodemailer sendMail lançou exceção:`);
+    console.error(`   message: ${error.message}`);
+    console.error(`   code:    ${error.code}`);
+    console.error(`   command: ${error.command}`);
+    if (error.response) console.error(`   response: ${error.response}`);
+
     return false;
   }
 }
@@ -85,4 +105,17 @@ async function sendVerificationEmail(email, token) {
   return sent;
 }
 
-module.exports = { sendVerificationEmail };
+async function sendTestEmail(to) {
+  console.log(`🧪 Enviando e-mail de teste para ${to}...`);
+
+  const sent = await sendEmail({
+    to,
+    subject: 'Teste SMTP Dream Line',
+    html: '<p>Se você recebeu este e-mail, o SMTP está funcionando.</p>',
+  });
+
+  console.log(`🧪 Resultado do teste: ${sent ? 'SUCESSO' : 'FALHA'}`);
+  return sent;
+}
+
+module.exports = { sendVerificationEmail, sendTestEmail };

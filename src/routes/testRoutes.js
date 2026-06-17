@@ -5,6 +5,7 @@ const fs = require('fs-extra');
 const path = require('path');
 const protect = require('../middleware/authMiddleware');
 const whisperService = require('../services/ai/whisperService');
+const { sendTestEmail } = require('../services/emailService');
 const { testDeepSeek } = require('../tests/ai/testDeepSeek');
 const { testFlux } = require('../tests/ai/testFlux');
 const { testClaude } = require('../tests/ai/testClaude');
@@ -26,6 +27,32 @@ const upload = multer({
 });
 
 const tempDir = path.join(__dirname, '..', '..', 'tmp', 'tests');
+
+router.post('/email', async (req, res) => {
+  try {
+    const { to } = req.body;
+    if (!to) {
+      return res.status(400).json({ success: false, message: 'Campo "to" é obrigatório.' });
+    }
+
+    console.log('🧪 ===== INÍCIO TESTE SMTP =====');
+
+    const start = Date.now();
+    const sent = await sendTestEmail(to);
+    const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+
+    console.log(`🧪 ===== FIM TESTE SMTP (${elapsed}s) =====`);
+
+    if (sent) {
+      return res.json({ success: true, message: `E-mail enviado para ${to} (${elapsed}s). Verifique os logs do servidor para detalhes.` });
+    }
+
+    return res.status(500).json({ success: false, message: `Falha no envio do e-mail (${elapsed}s). Verifique os logs do servidor.` });
+  } catch (error) {
+    console.error('🧪 Erro no teste SMTP:', error.message);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
 
 router.post('/whisper', protect, upload.single('audio'), async (req, res) => {
   let filePath = null;
