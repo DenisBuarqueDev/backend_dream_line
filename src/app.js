@@ -11,6 +11,8 @@ const { startScheduler } = require('./services/notificationScheduler');
 
 const app = express();
 
+app.set('trust proxy', true);
+
 const allowedOrigins = (process.env.CORS_ORIGIN || '')
   .split(',')
   .map(s => s.trim())

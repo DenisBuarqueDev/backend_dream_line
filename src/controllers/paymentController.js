@@ -39,29 +39,35 @@ function verifyWebhookSignature(req) {
 
 const handleWebhook = async (req, res, next) => {
   try {
-    const { action, data, type } = req.body;
+    const body = req.body;
+    const action = body.action;
+    const type = body.type;
+    const topic = body.topic;
+    const data = body.data;
 
-    console.log('[MP Webhook] Recebido:', JSON.stringify({ action, type, dataId: data?.id }));
+    const isPayment = action === 'payment.approved' ||
+      action === 'payment.updated' ||
+      type === 'payment' ||
+      topic === 'payment';
+
+    const paymentId = data?.id || body.id || body.resource?.id;
+
+    console.log('[MP Webhook] Recebido:', JSON.stringify({
+      action,
+      type,
+      topic,
+      paymentId,
+      hasSignature: !!req.headers['x-signature']
+    }));
+
+    if (!isPayment || !paymentId) {
+      console.log('[MP Webhook] Evento ignorado:', { action, type, topic, paymentId });
+      return successResponse(res, { processed: false, reason: 'evento ignorado' });
+    }
 
     if (!verifyWebhookSignature(req)) {
       console.error('[MP Webhook] Assinatura inválida');
       return errorResponse(res, 'Assinatura do webhook inválida', 401);
-    }
-
-    const isPaymentApproved =
-      action === 'payment.approved' ||
-      action === 'payment.updated' ||
-      type === 'payment';
-
-    if (!isPaymentApproved) {
-      console.log('[MP Webhook] Evento ignorado:', action, type);
-      return successResponse(res, { processed: false, reason: 'evento ignorado' });
-    }
-
-    const paymentId = data?.id;
-    if (!paymentId) {
-      console.error('[MP Webhook] ID do pagamento não fornecido');
-      return errorResponse(res, 'ID do pagamento não fornecido', 400);
     }
 
     console.log('[MP Webhook] Processando payment:', paymentId);
