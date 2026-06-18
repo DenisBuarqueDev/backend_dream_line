@@ -37,8 +37,7 @@ if (serviceAccount.projectId && serviceAccount.privateKey && serviceAccount.clie
 }
 
 async function sendPush(token, title, body, data = {}) {
-  if (!admin.apps.length) {
-    console.warn('Firebase não configurado, pulando push');
+  if (!admin || !admin.apps || !admin.apps.length) {
     return { success: false, reason: 'firebase_not_configured' };
   }
 

@@ -16,33 +16,43 @@ const MESSAGES = {
 };
 
 async function checkAndSendNotifications() {
-  const now = new Date();
-  const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  try {
+    const now = new Date();
+    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-  const message = MESSAGES[currentTime];
-  if (!message) return;
+    const message = MESSAGES[currentTime];
+    if (!message) return;
 
-  const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
 
-  const users = await User.find({
-    notificationsEnabled: true,
-    fcmToken: { $ne: null },
-    $or: [
-      { lastNotificationSent: null },
-      { lastNotificationSent: { $lt: oneHourAgo } },
-    ],
-  });
+    const users = await User.find({
+      notificationsEnabled: true,
+      fcmToken: { $ne: null },
+      $or: [
+        { lastNotificationSent: null },
+        { lastNotificationSent: { $lt: oneHourAgo } },
+      ],
+    });
 
-  for (const user of users) {
-    const result = await sendPush(user.fcmToken, message.title, message.body, { link: message.link });
+    if (!users || !users.length) return;
 
-    if (result.success) {
-      user.lastNotificationSent = now;
-      await user.save();
-    } else if (result.reason === 'token_not_registered' || result.reason === 'invalid_token') {
-      user.fcmToken = null;
-      await user.save();
+    for (const user of users) {
+      if (!user || !user.fcmToken) continue;
+
+      const result = await sendPush(user.fcmToken, message.title, message.body, { link: message.link });
+
+      if (!result) continue;
+
+      if (result.success) {
+        user.lastNotificationSent = now;
+        await user.save();
+      } else if (result.reason === 'token_not_registered' || result.reason === 'invalid_token') {
+        user.fcmToken = null;
+        await user.save();
+      }
     }
+  } catch (err) {
+    console.error('[Notifications] Erro interno em checkAndSendNotifications:', err.message);
   }
 }
 
