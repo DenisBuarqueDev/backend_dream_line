@@ -2,6 +2,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 
 const securityMiddleware = (app) => {
+  app.set('trust proxy', 1);
   app.use(helmet());
 
   const limiter = rateLimit({
