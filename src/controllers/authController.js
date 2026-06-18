@@ -3,7 +3,7 @@ const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const User = require("../models/User");
 const { errorResponse, successResponse } = require("../utils/response");
-const { sendVerificationEmail } = require("../services/emailService");
+const { sendVerificationEmail, sendPasswordResetEmail } = require("../services/emailService");
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "7d" });
@@ -176,4 +176,86 @@ const resendVerification = async (req, res, next) => {
   }
 };
 
-module.exports = { register, login, verifyEmail, resendVerification };
+const forgotPassword = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return errorResponse(res, "Email is required", 400);
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+
+    if (user) {
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      user.passwordResetToken = resetToken;
+      user.passwordResetExpires = new Date(Date.now() + 30 * 60 * 1000);
+      await user.save();
+
+      await sendPasswordResetEmail(user.email, resetToken);
+    }
+
+    return successResponse(res, {
+      message: "Se existir uma conta vinculada a este e-mail, enviaremos instruções para recuperação.",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const validateResetToken = async (req, res, next) => {
+  try {
+    const { token } = req.query;
+
+    if (!token) {
+      return res.json({ valid: false });
+    }
+
+    const user = await User.findOne({
+      passwordResetToken: token,
+      passwordResetExpires: { $gt: new Date() },
+    });
+
+    return res.json({ valid: !!user });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const resetPassword = async (req, res, next) => {
+  try {
+    const { token, password } = req.body;
+
+    if (!token || !password) {
+      return errorResponse(res, "Token and password are required", 400);
+    }
+
+    if (password.length < 6) {
+      return errorResponse(res, "Password must be at least 6 characters", 400);
+    }
+
+    const user = await User.findOne({
+      passwordResetToken: token,
+      passwordResetExpires: { $gt: new Date() },
+    });
+
+    if (!user) {
+      return errorResponse(res, "Token inválido ou expirado.", 400);
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    user.password = hashedPassword;
+    user.passwordResetToken = null;
+    user.passwordResetExpires = null;
+    await user.save();
+
+    return successResponse(res, {
+      message: "Senha redefinida com sucesso!",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { register, login, verifyEmail, resendVerification, forgotPassword, validateResetToken, resetPassword };
