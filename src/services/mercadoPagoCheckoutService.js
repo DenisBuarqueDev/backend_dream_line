@@ -64,16 +64,19 @@ async function createCheckoutPreference({ userId, userEmail }) {
 }
 
 async function processPaymentEvent({ paymentId, ip, userAgent }) {
+  console.log('[MP processPaymentEvent] Iniciando para paymentId:', paymentId);
+
   let payment;
   try {
     payment = await getPayment(paymentId);
+    console.log('[MP processPaymentEvent] Payment recebido. Status:', payment.status, 'ExternalRef:', payment.external_reference);
   } catch (err) {
-    console.error(`[MP] Erro ao buscar payment ${paymentId}:`, err.message);
+    console.error('[MP processPaymentEvent] Erro ao buscar payment:', err.message);
     return { processed: false, reason: 'erro ao buscar pagamento' };
   }
 
   if (payment.status !== 'approved') {
-    console.log(`[MP] Payment ${paymentId} status: ${payment.status} — ignorado`);
+    console.log(`[MP processPaymentEvent] Payment ${paymentId} status: ${payment.status} — ignorado`);
     return { processed: false, reason: `status: ${payment.status}` };
   }
 
@@ -84,19 +87,24 @@ async function processPaymentEvent({ paymentId, ip, userAgent }) {
     const parts = externalRef.split(':');
     if (parts.length >= 2) {
       userId = parts[0];
+      console.log('[MP processPaymentEvent] userId extraído de external_reference:', userId);
     }
   }
 
   if (!userId) {
     const payerEmail = payment.payer?.email;
+    console.log('[MP processPaymentEvent] Buscando userId por email:', payerEmail);
     if (payerEmail) {
       const user = await User.findOne({ email: payerEmail.toLowerCase() }).select('_id');
-      if (user) userId = user._id.toString();
+      if (user) {
+        userId = user._id.toString();
+        console.log('[MP processPaymentEvent] userId encontrado por email:', userId);
+      }
     }
   }
 
   if (!userId) {
-    console.error(`[MP] Usuário não identificado para payment ${paymentId}`);
+    console.error('[MP processPaymentEvent] Usuário não identificado para payment', paymentId);
     await logAction({
       userId: null,
       action: 'payment_received',
@@ -109,13 +117,14 @@ async function processPaymentEvent({ paymentId, ip, userAgent }) {
 
   const user = await User.findById(userId);
   if (!user) {
+    console.error('[MP processPaymentEvent] Usuário não encontrado:', userId);
     return { processed: false, reason: 'usuário não encontrado' };
   }
 
+  console.log('[MP processPaymentEvent] Ativando premium para:', user.email, 'userId:', userId);
   user.activatePremium(paymentId);
   await user.save();
-
-  console.log(`[MP] Premium ATIVADO para ${user.email} — 30 dias até ${user.premiumExpiresAt}`);
+  console.log('[MP processPaymentEvent] Premium ATIVADO. plan:', user.plan, 'expiresAt:', user.premiumExpiresAt, 'lastPaymentId:', user.lastPaymentId);
 
   await logAction({
     userId: user._id,

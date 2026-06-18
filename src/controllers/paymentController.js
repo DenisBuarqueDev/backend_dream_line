@@ -41,7 +41,10 @@ const handleWebhook = async (req, res, next) => {
   try {
     const { action, data, type } = req.body;
 
+    console.log('[MP Webhook] Recebido:', JSON.stringify({ action, type, dataId: data?.id }));
+
     if (!verifyWebhookSignature(req)) {
+      console.error('[MP Webhook] Assinatura inválida');
       return errorResponse(res, 'Assinatura do webhook inválida', 401);
     }
 
@@ -51,18 +54,24 @@ const handleWebhook = async (req, res, next) => {
       type === 'payment';
 
     if (!isPaymentApproved) {
+      console.log('[MP Webhook] Evento ignorado:', action, type);
       return successResponse(res, { processed: false, reason: 'evento ignorado' });
     }
 
     const paymentId = data?.id;
     if (!paymentId) {
+      console.error('[MP Webhook] ID do pagamento não fornecido');
       return errorResponse(res, 'ID do pagamento não fornecido', 400);
     }
+
+    console.log('[MP Webhook] Processando payment:', paymentId);
 
     const ip = req.ip || req.headers['x-forwarded-for'] || null;
     const userAgent = req.headers['user-agent'] || null;
 
     const result = await processPaymentEvent({ paymentId, ip, userAgent });
+
+    console.log('[MP Webhook] Resultado:', JSON.stringify(result));
 
     return successResponse(res, result);
   } catch (error) {

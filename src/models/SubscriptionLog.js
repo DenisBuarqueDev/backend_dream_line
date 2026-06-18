@@ -30,7 +30,7 @@ const SubscriptionLogSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['inactive', 'active', 'cancelled', 'expired'],
+    enum: ['inactive', 'active', 'cancelled', 'expired', 'pending'],
     default: null
   },
   mercadoPagoSubscriptionId: {
