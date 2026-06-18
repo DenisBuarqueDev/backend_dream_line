@@ -8,7 +8,7 @@ const { checkFeatureAccess } = require('../middleware/planMiddleware');
 router.post('/', protect, createDream);
 router.get('/', protect, getDreams);
 router.get('/search', protect, searchDreamsByDate);
-router.post('/:id/image', protect, generateImage);
+router.post('/:id/image', protect, checkFeatureAccess('generate_image'), generateImage);
 router.delete('/:id', protect, checkFeatureAccess('delete_dream'), deleteDream);
 
 module.exports = router;

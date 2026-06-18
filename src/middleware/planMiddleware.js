@@ -10,7 +10,8 @@ const FEATURE_MESSAGES = {
   delete_emotion: 'Funcionalidade disponível apenas para plano Premium',
   correlations: 'Funcionalidade disponível apenas para plano Premium',
   notifications: 'Funcionalidade disponível apenas para plano Premium',
-  numerology: 'Funcionalidade disponível apenas para plano Premium'
+  numerology: 'Funcionalidade disponível apenas para plano Premium',
+  astral_chart: 'Funcionalidade disponível apenas para plano Premium'
 };
 
 const checkFeatureAccess = (feature) => {

@@ -280,7 +280,8 @@ UserSchema.methods.canAccessFeature = function(feature) {
     'delete_emotion': planInfo.canDeleteEmotion,
     'correlations': planInfo.canUseCorrelations,
     'notifications': planInfo.canUseNotifications,
-    'numerology': planInfo.canUseNumerology
+    'numerology': planInfo.canUseNumerology,
+    'astral_chart': planInfo.canGenerateImage
   };
   
   return featureMap[feature] || false;
