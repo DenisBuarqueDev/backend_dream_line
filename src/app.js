@@ -11,7 +11,7 @@ const { startScheduler } = require('./services/notificationScheduler');
 
 const app = express();
 
-app.set('trust proxy', true);
+app.set('trust proxy', 1);
 
 const allowedOrigins = (process.env.CORS_ORIGIN || '')
   .split(',')
@@ -31,6 +31,11 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+
+app.use('/api/payments/webhook', (req, _res, next) => {
+  console.log('[MP ENTRY]', req.method, req.originalUrl, req.headers['content-type'], Object.keys(req.body || {}).length ? 'body OK' : 'body vazio');
+  next();
+});
 
 securityMiddleware(app);
 

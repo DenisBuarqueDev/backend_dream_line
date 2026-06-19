@@ -46,6 +46,7 @@ async function createCheckoutPreference({ userId, userEmail }) {
       pending: backUrl,
     },
     auto_return: 'approved',
+    notification_url: 'https://backend-dream-line.onrender.com/api/payments/webhook',
     statement_descriptor: 'DREAM LINE PREMIUM',
     payer: userEmail ? { email: userEmail } : undefined,
   };

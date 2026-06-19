@@ -8,7 +8,7 @@ const securityMiddleware = (app) => {
     windowMs: 15 * 60 * 1000,
     max: 100,
     message: { success: false, message: 'Too many requests, try again later' },
-    validate: { xForwardedForHeader: false }
+    validate: { xForwardedForHeader: false, trustProxy: false }
   });
   app.use('/api', limiter);
 };
