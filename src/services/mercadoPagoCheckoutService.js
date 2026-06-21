@@ -116,16 +116,39 @@ async function processPaymentEvent({ paymentId, ip, userAgent }) {
     return { processed: false, reason: 'usuário não identificado' };
   }
 
-  const user = await User.findById(userId);
+  const now = new Date();
+  const expiresAt = new Date(now);
+  expiresAt.setDate(expiresAt.getDate() + 30);
+
+  const user = await User.findOneAndUpdate(
+    { _id: userId, lastPaymentId: { $ne: paymentId } },
+    {
+      $set: {
+        plan: 'premium',
+        lastPaymentId: paymentId,
+        premiumSince: now,
+        premiumExpiresAt: expiresAt,
+        'subscription.plan': 'premium',
+        'subscription.status': 'active',
+        'subscription.startedAt': now,
+        'subscription.expiresAt': expiresAt,
+        'subscription.lastPaymentAt': now,
+      }
+    },
+    { new: true }
+  );
+
   if (!user) {
+    const existing = await User.findById(userId).select('lastPaymentId');
+    if (existing && existing.lastPaymentId === paymentId) {
+      console.log('[MP processPaymentEvent] Pagamento já processado:', paymentId);
+      return { processed: false, reason: 'pagamento já processado' };
+    }
     console.error('[MP processPaymentEvent] Usuário não encontrado:', userId);
     return { processed: false, reason: 'usuário não encontrado' };
   }
 
-  console.log('[MP processPaymentEvent] Ativando premium para:', user.email, 'userId:', userId);
-  user.activatePremium(paymentId);
-  await user.save();
-  console.log('[MP processPaymentEvent] Premium ATIVADO. plan:', user.plan, 'expiresAt:', user.premiumExpiresAt, 'lastPaymentId:', user.lastPaymentId);
+  console.log('[MP processPaymentEvent] Premium ATIVADO para:', user.email, 'userId:', userId, 'expiresAt:', user.premiumExpiresAt);
 
   await logAction({
     userId: user._id,

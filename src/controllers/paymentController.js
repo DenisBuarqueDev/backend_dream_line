@@ -2,14 +2,19 @@ const crypto = require('crypto');
 const { errorResponse, successResponse } = require('../utils/response');
 const { processPaymentEvent } = require('../services/mercadoPagoCheckoutService');
 
+/*
+ * Validação oficial Mercado Pago x-signature
+ *
+ * Template: id:[data.id_url];request-id:[x-request-id_header];ts:[ts_header];
+ *
+ * - [data.id_url]  = req.query['data.id'] (query params). Se alfanumérico, lowercased.
+ * - [x-request-id_header] = req.headers['x-request-id']
+ * - [ts_header]    = ts extraído do header x-signature
+ * - Se qualquer valor estiver ausente, remover o segmento
+ */
 function verifyWebhookSignature(req) {
   const signatureHeader = req.headers['x-signature'];
-  if (!signatureHeader) {
-    console.log('[MP Signature] Header x-signature ausente');
-    return true;
-  }
-
-  console.log('[MP Signature] Header bruto:', signatureHeader);
+  if (!signatureHeader) return true;
 
   const pairs = {};
   signatureHeader.split(',').forEach(p => {
@@ -21,78 +26,55 @@ function verifyWebhookSignature(req) {
 
   const ts = pairs['ts'];
   const v1 = pairs['v1'];
-  const requestId = req.headers['x-request-id'] || '';
-
-  console.log('[MP Signature] ts:', ts);
-  console.log('[MP Signature] v1:', v1);
-  console.log('[MP Signature] x-request-id:', requestId);
+  const xRequestId = req.headers['x-request-id'] || '';
+  const dataIdFromQuery = req.query?.['data.id'] || '';
 
   if (!ts || !v1) {
-    console.warn('[MP Signature] Header sem ts/v1:', JSON.stringify(pairs));
+    console.warn('[MP Signature] Header x-signature sem ts/v1');
     return true;
   }
 
   const secret = process.env.MERCADOPAGO_WEBHOOK_SECRET;
-  console.log('[MP Signature] secret configurado?', !!secret);
-
   if (!secret) {
     console.warn('[MP Signature] MERCADOPAGO_WEBHOOK_SECRET não configurado');
     return true;
   }
 
-  const body = req.body || {};
-  const bodyDataId = body.data?.id || body.id || '';
-  const queryDataId = req.query?.['data.id'] || req.query?.id || '';
-  const dataId = bodyDataId || queryDataId || '';
+  const rawId = dataIdFromQuery;
+  const dataId = rawId && !/^\d+$/.test(rawId) ? rawId.toLowerCase() : rawId;
 
-  const type = body.type || req.query?.type || body.topic || req.query?.topic || '';
+  const parts = [];
+  if (dataId) parts.push(`id:${dataId}`);
+  if (xRequestId) parts.push(`request-id:${xRequestId}`);
+  parts.push(`ts:${ts}`);
+  const manifest = parts.join(';') + ';';
 
-  console.log('[MP Signature] dataId usado:', dataId);
-  console.log('[MP Signature] type usado:', type);
-  console.log('[MP Signature] bodyDataId:', bodyDataId);
-  console.log('[MP Signature] queryDataId:', queryDataId);
+  const expected = crypto
+    .createHmac('sha256', secret)
+    .update(manifest, 'utf8')
+    .digest('hex');
 
-  const manifests = [
-    { label: 'dataId|type|dataId|ts',      value: `${dataId}|${type}|${dataId}|${ts}` },
-    { label: 'dataId|type|ts',              value: `${dataId}|${type}|${ts}` },
-    { label: 'dataId|requestId|dataId|ts',  value: `${dataId}|${requestId}|${dataId}|${ts}` },
-    { label: 'dataId|requestId|ts',         value: `${dataId}|${requestId}|${ts}` },
-    { label: 'id:dataId;type:type',         value: `id:${dataId};type:${type}` },
-    { label: 'data.id|type|data.id|ts',     value: `${queryDataId || bodyDataId}|${type}|${queryDataId || bodyDataId}|${ts}` },
-  ];
-
-  for (const { label, value } of manifests) {
-    const expected = crypto
-      .createHmac('sha256', secret)
-      .update(value, 'utf8')
-      .digest('hex');
-
-    if (expected === v1) {
-      console.log('[MP Signature] ✓ Assinatura válida — formato:', label);
-      console.log('[MP Signature] Manifest:', value);
-      return true;
+  try {
+    const valid = crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(v1));
+    if (!valid) {
+      console.log('[MP Signature] Assinatura inválida');
+      console.log('[MP Signature] dataId presente:', !!rawId);
+      console.log('[MP Signature] x-request-id presente:', !!xRequestId);
+      console.log('[MP Signature] v1 prefix:', v1.substring(0, 6));
+    } else {
+      console.log('[MP Signature] Assinatura válida');
     }
-
-    console.log(`[MP Signature]   ${label}: esperado=${expected}  recebido=${v1}  match=${expected === v1}`);
+    return valid;
+  } catch (err) {
+    console.warn('[MP Signature] Erro ao comparar HMAC');
+    return false;
   }
-
-  console.warn('[MP Signature] ✗ Nenhum formato de manifest funcionou');
-  return false;
 }
 
 const handleWebhook = async (req, res, next) => {
   try {
     const body = req.body || {};
     const query = req.query || {};
-
-    console.log('[MP DEBUG] Headers:', JSON.stringify({
-      'x-signature': req.headers['x-signature'],
-      'x-request-id': req.headers['x-request-id'],
-      'content-type': req.headers['content-type'],
-    }));
-    console.log('[MP DEBUG] Body:', JSON.stringify(body));
-    console.log('[MP DEBUG] Query:', JSON.stringify(query));
-    console.log('[MP DEBUG] Secret configurado?', !!process.env.MERCADOPAGO_WEBHOOK_SECRET);
 
     const action = body.action;
     const type = body.type;
@@ -114,21 +96,14 @@ const handleWebhook = async (req, res, next) => {
       queryTopic === 'payment'
     );
 
-    console.log('[MP Webhook] Recebido:', JSON.stringify({
-      action, type, topic,
-      queryType, queryTopic,
-      paymentId,
-      queryDataId, queryId,
-      isPayment,
-    }));
-
     if (!isPayment || !paymentId) {
-      console.log('[MP Webhook] Evento ignorado:', { action, type, topic, queryType, queryTopic, paymentId });
+      console.log('[MP Webhook] Ignorado:', { action, type, topic, queryType, queryTopic, paymentId });
       return successResponse(res, { processed: false, reason: 'evento ignorado' });
     }
 
     if (!verifyWebhookSignature(req)) {
-      console.warn('[MP Webhook] Assinatura inválida — continuando processamento mesmo assim');
+      console.warn('[MP Webhook] Assinatura inválida — recusado');
+      return errorResponse(res, 'Assinatura inválida', 401);
     }
 
     console.log('[MP Webhook] Processando payment:', paymentId);
@@ -138,12 +113,12 @@ const handleWebhook = async (req, res, next) => {
 
     const result = await processPaymentEvent({ paymentId, ip, userAgent });
 
-    console.log('[MP Webhook] Resultado:', JSON.stringify(result));
+    console.log('[MP Webhook] Resultado:', result.processed ? 'processado' : result.reason);
 
     return successResponse(res, result);
   } catch (error) {
     console.error('[MP Webhook] Erro:', error.message);
-    next(error);
+    return errorResponse(res, 'Erro interno', 500);
   }
 };
 
