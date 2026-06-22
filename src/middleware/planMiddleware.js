@@ -9,9 +9,10 @@ const FEATURE_MESSAGES = {
   delete_dream: 'Funcionalidade disponível apenas para plano Premium',
   delete_emotion: 'Funcionalidade disponível apenas para plano Premium',
   correlations: 'Funcionalidade disponível apenas para plano Premium',
-  notifications: 'Funcionalidade disponível apenas para plano Premium',
   numerology: 'Funcionalidade disponível apenas para plano Premium',
-  astral_chart: 'Funcionalidade disponível apenas para plano Premium'
+  astral_chart: 'Funcionalidade disponível apenas para plano Premium',
+  chat_emotional: 'Funcionalidade disponível apenas para plano Premium',
+  emotion_insights: 'Funcionalidade disponível apenas para plano Premium'
 };
 
 const checkFeatureAccess = (feature) => {
@@ -41,7 +42,7 @@ const checkFeatureAccess = (feature) => {
         const wasReset = planInfo.isReset;
         if (wasReset) {
           user.dreamCount = 0;
-          user.dreamLimitResetAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+          user.dreamLimitResetAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
           await user.save();
         }
         

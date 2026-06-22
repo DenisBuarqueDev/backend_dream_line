@@ -46,7 +46,7 @@ const createDream = async (req, res, next) => {
     const wasReset = planInfo.isReset;
     if (wasReset) {
       user.dreamCount = 0;
-      user.dreamLimitResetAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      user.dreamLimitResetAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
       await user.save();
     }
 

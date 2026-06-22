@@ -3,22 +3,22 @@ const bcrypt = require('bcryptjs');
 
 const PLAN_LIMITS = {
   free: {
-    maxDreams: 5,
+    maxDreams: 1,
     maxAstralCharts: 1,
     canGenerateImage: false,
     canUseSleepMode: false,
     canSeeWeeklySummary: false,
     canGetFullInterpretation: false,
-    maxInterpretationsPerDay: 3,
+    maxInterpretationsPerDay: 1,
     maxEmotionAnalysesPerDay: 3,
     canDeleteDream: false,
     canDeleteEmotion: false,
     canUseCorrelations: false,
-    canUseNotifications: false,
+    canUseNotifications: true,
     canUseNumerology: false
   },
   premium: {
-    maxDreams: 60,
+    maxDreams: 3,
     maxAstralCharts: Infinity,
     canGenerateImage: true,
     canUseSleepMode: true,
@@ -196,6 +196,14 @@ UserSchema.methods.checkUserPlan = function() {
   const limits = PLAN_LIMITS[this.plan] || PLAN_LIMITS.free;
   const now = new Date();
   const isPremium = this.plan === 'premium';
+  const oneDayFromNow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  let legacyReset = false;
+
+  if (this.dreamLimitResetAt && this.dreamLimitResetAt > oneDayFromNow) {
+    this.dreamCount = 0;
+    this.dreamLimitResetAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    legacyReset = true;
+  }
 
   let daysRemaining = null;
   if (isPremium && this.premiumExpiresAt) {
@@ -265,7 +273,7 @@ UserSchema.methods.checkUserPlan = function() {
     maxInterpretationsPerDay: limits.maxInterpretationsPerDay,
     remainingEmotionAnalyses,
     maxEmotionAnalysesPerDay: limits.maxEmotionAnalysesPerDay,
-    isReset: false
+    isReset: legacyReset
   };
 };
 
@@ -288,9 +296,9 @@ UserSchema.methods.canAccessFeature = function(feature) {
 };
 
 UserSchema.methods.incrementDreamCount = async function() {
-  const planInfo = this.checkUserPlan();
+  const max = this.plan === 'premium' ? PLAN_LIMITS.premium.maxDreams : PLAN_LIMITS.free.maxDreams;
 
-  if (!planInfo.canInterpret) {
+  if ((this.dreamCount || 0) >= max) {
     return false;
   }
 
@@ -368,10 +376,8 @@ UserSchema.statics.expireOverdue = async function() {
       'subscription.expiresAt': { $lte: now },
     },
     {
-      $set: {
-        plan: 'free',
-        'subscription.status': 'expired',
-      },
+      $set: { plan: 'free', 'subscription.status': 'expired' },
+      $unset: { premiumExpiresAt: '' },
     }
   );
 
@@ -381,10 +387,8 @@ UserSchema.statics.expireOverdue = async function() {
       premiumExpiresAt: { $lte: now },
     },
     {
-      $set: {
-        plan: 'free',
-        'subscription.status': 'expired',
-      },
+      $set: { plan: 'free', 'subscription.status': 'expired' },
+      $unset: { premiumExpiresAt: '' },
     }
   );
 

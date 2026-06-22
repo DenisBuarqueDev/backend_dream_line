@@ -6,6 +6,7 @@ const User = require('./models/User');
 const securityMiddleware = require('./middleware/securityMiddleware');
 const errorMiddleware = require('./middleware/errorMiddleware');
 const path = require('path');
+const cron = require('node-cron');
 const { logEnvStatus } = require('./utils/envValidator');
 const { startScheduler } = require('./services/notificationScheduler');
 
@@ -135,6 +136,17 @@ app.listen(PORT, async () => {
   }
 
   startScheduler();
+
+  cron.schedule('0 * * * *', async () => {
+    try {
+      const expired = await User.expireOverdue();
+      if (expired > 0) {
+        console.log(`[ExpiryScheduler] ${expired} usuário(s) expirado(s) em ${new Date().toISOString()}`);
+      }
+    } catch (err) {
+      console.error('[ExpiryScheduler] Erro:', err.message);
+    }
+  });
 
   console.log(`Servidor rodando na porta ${PORT}`);
   console.log(`Ambiente: ${process.env.NODE_ENV || 'development'}`);
