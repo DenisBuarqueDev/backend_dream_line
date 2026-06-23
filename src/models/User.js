@@ -289,7 +289,9 @@ UserSchema.methods.canAccessFeature = function(feature) {
     'correlations': planInfo.canUseCorrelations,
     'notifications': planInfo.canUseNotifications,
     'numerology': planInfo.canUseNumerology,
-    'astral_chart': planInfo.canGenerateImage
+    'astral_chart': planInfo.canGenerateImage,
+    'emotion_insights': planInfo.isPremium,
+    'chat_emotional': planInfo.isPremium
   };
   
   return featureMap[feature] || false;
