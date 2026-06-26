@@ -74,7 +74,7 @@ app.use('/api/notifications', require('./routes/notificationRoutes'));
 app.use('/api/insights', require('./routes/dreamEmotionCorrelationRoutes'));
 app.use('/api/emotions', require('./routes/emotionInsightsRoutes'));
 app.use('/api/emotions', require('./routes/emotionRoutes'));
-
+app.use('/api/numerology-name', require('./routes/numerologyNameRoutes'));
 
 if (process.env.NODE_ENV !== 'production') {
   app.get('/api/debug/image-providers', (_req, res) => {

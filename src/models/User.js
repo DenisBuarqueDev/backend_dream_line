@@ -15,7 +15,8 @@ const PLAN_LIMITS = {
     canDeleteEmotion: false,
     canUseCorrelations: false,
     canUseNotifications: true,
-    canUseNumerology: false
+    canUseNumerology: false,
+    maxNameNumerologiesPerDay: 1
   },
   premium: {
     maxDreams: 3,
@@ -30,7 +31,8 @@ const PLAN_LIMITS = {
     canDeleteEmotion: true,
     canUseCorrelations: true,
     canUseNotifications: true,
-    canUseNumerology: true
+    canUseNumerology: true,
+    maxNameNumerologiesPerDay: 3
   }
 };
 
@@ -144,6 +146,14 @@ const UserSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
+  nameNumerologyCount: {
+    type: Number,
+    default: 0
+  },
+  nameNumerologyLimitResetAt: {
+    type: Date,
+    default: Date.now
+  },
   emailVerified: {
     type: Boolean,
     default: false
@@ -236,6 +246,8 @@ UserSchema.methods.checkUserPlan = function() {
       maxInterpretationsPerDay: limits.maxInterpretationsPerDay,
       remainingEmotionAnalyses: limits.maxEmotionAnalysesPerDay,
       maxEmotionAnalysesPerDay: limits.maxEmotionAnalysesPerDay,
+      remainingNameNumerologies: limits.maxNameNumerologiesPerDay,
+      maxNameNumerologiesPerDay: limits.maxNameNumerologiesPerDay,
       isReset: true
     };
   }
@@ -250,6 +262,12 @@ UserSchema.methods.checkUserPlan = function() {
   let remainingEmotionAnalyses = limits.maxEmotionAnalysesPerDay;
   if (this.emotionAnalysisLimitResetAt && now < this.emotionAnalysisLimitResetAt) {
     remainingEmotionAnalyses = Math.max(0, limits.maxEmotionAnalysesPerDay - (this.emotionAnalysisCount || 0));
+  }
+
+  const nameNumerologyMax = limits.maxNameNumerologiesPerDay;
+  let remainingNameNumerologies = nameNumerologyMax;
+  if (this.nameNumerologyLimitResetAt && now < this.nameNumerologyLimitResetAt) {
+    remainingNameNumerologies = Math.max(0, nameNumerologyMax - (this.nameNumerologyCount || 0));
   }
 
   return {
@@ -273,6 +291,8 @@ UserSchema.methods.checkUserPlan = function() {
     maxInterpretationsPerDay: limits.maxInterpretationsPerDay,
     remainingEmotionAnalyses,
     maxEmotionAnalysesPerDay: limits.maxEmotionAnalysesPerDay,
+    remainingNameNumerologies,
+    maxNameNumerologiesPerDay: nameNumerologyMax,
     isReset: legacyReset
   };
 };
@@ -346,6 +366,27 @@ UserSchema.methods.incrementEmotionAnalysisCount = async function() {
 
   await this.constructor.findByIdAndUpdate(this._id, { $inc: { emotionAnalysisCount: 1 } });
   this.emotionAnalysisCount = (this.emotionAnalysisCount || 0) + 1;
+  return true;
+};
+
+UserSchema.methods.incrementNameNumerologyCount = async function() {
+  const now = new Date();
+  const resetPeriod = 24 * 60 * 60 * 1000;
+
+  if (this.nameNumerologyLimitResetAt && now > this.nameNumerologyLimitResetAt) {
+    this.nameNumerologyCount = 0;
+    this.nameNumerologyLimitResetAt = new Date(now.getTime() + resetPeriod);
+  }
+
+  const planLimits = PLAN_LIMITS[this.plan] || PLAN_LIMITS.free;
+  const max = planLimits.maxNameNumerologiesPerDay;
+
+  if ((this.nameNumerologyCount || 0) >= max) {
+    return false;
+  }
+
+  await this.constructor.findByIdAndUpdate(this._id, { $inc: { nameNumerologyCount: 1 } });
+  this.nameNumerologyCount = (this.nameNumerologyCount || 0) + 1;
   return true;
 };
 
