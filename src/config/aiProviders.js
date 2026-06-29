@@ -17,9 +17,8 @@ const AI_PROVIDERS = {
   },
   flux: {
     primary: {
-      url: process.env.FLUX_API_URL || 'https://api.replicate.com/v1/predictions',
+      url: 'https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions',
       model: 'black-forest-labs/flux-schnell',
-      version: '2e8dca5d60b6c0a1b3e5c4f6d7e8f9a0b1c2d3e4',
     },
     fallback: {
       url: process.env.STABLE_DIFFUSION_API_URL || 'https://api.stability.ai/v2beta/stable-image/generate/core',

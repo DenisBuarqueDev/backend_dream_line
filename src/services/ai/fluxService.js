@@ -118,16 +118,16 @@ async function generateDreamImage(interpretation, emotions = [], context = {}) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Token ${apiKey}`,
+        'Authorization': `Bearer ${apiKey}`,
       },
       data: {
-        version: config.version,
         input: {
           prompt,
           num_outputs: 1,
           aspect_ratio: '16:9',
           output_format: 'webp',
-          num_inference_steps: 4,
+          go_fast: true,
+          output_quality: 80,
         },
       },
       timeout: AI_PROVIDERS.flux.timeout,
@@ -290,7 +290,7 @@ async function pollPrediction(url, apiKey, maxAttempts = 30) {
     const response = await axios({
       url,
       method: 'GET',
-      headers: { 'Authorization': `Token ${apiKey}` },
+      headers: { 'Authorization': `Bearer ${apiKey}` },
       timeout: 5000,
       validateStatus: (status) => status < 500,
     });
