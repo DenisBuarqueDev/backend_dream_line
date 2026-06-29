@@ -191,7 +191,7 @@ async function generateDreamImage(interpretation, emotions = [], context = {}) {
     console.error('❌ Image Generation Error');
     console.error('❌ Provider: Replicate (FLUX)');
     console.error('❌ Status:', fluxStatus);
-    console.error('❌ Data:', error.response?.data || error.message);
+    console.error('❌ Data:', error.response ? JSON.stringify(error.response) : error.message);
 
     if (fluxStatus === 429) {
       devLog('⚠️ FLUX rate limitado, tentando fallback...');
@@ -427,7 +427,7 @@ async function fallbackGeneration(prompt, errorMessage) {
       console.error('❌ Image Generation Error');
       console.error('❌ Provider: Stability AI');
       console.error('❌ Status:', stabStatus);
-      console.error('❌ Data:', error.response?.data || error.message);
+      console.error('❌ Data:', error.response ? JSON.stringify(error.response) : error.message);
 
       if (stabStatus === 429) {
         return {
