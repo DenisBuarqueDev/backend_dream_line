@@ -12,7 +12,10 @@ const FEATURE_MESSAGES = {
   numerology: 'Funcionalidade disponível apenas para plano Premium',
   astral_chart: 'Funcionalidade disponível apenas para plano Premium',
   chat_emotional: 'Funcionalidade disponível apenas para plano Premium',
-  emotion_insights: 'Funcionalidade disponível apenas para plano Premium'
+  emotion_insights: 'Funcionalidade disponível apenas para plano Premium',
+  dream_coach: 'Funcionalidade disponível apenas para plano Premium',
+  timeline: 'Funcionalidade disponível apenas para plano Premium',
+  life_insights: 'Funcionalidade disponível apenas para plano Premium'
 };
 
 const checkFeatureAccess = (feature) => {

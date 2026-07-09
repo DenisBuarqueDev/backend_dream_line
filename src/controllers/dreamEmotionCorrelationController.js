@@ -78,7 +78,33 @@ exports.getCorrelations = asyncHandler(async (req, res) => {
     }
   }
 
-  // ── 4. Montar resposta ──────────────────────────────────────
+  // ── 4. Timeline (pares indivíduais) ────────────────────────
+  const timeline = [];
+
+  for (const dream of dreams) {
+    if (!dream.dreamCategory) continue;
+    const dreamMs = new Date(dream.createdAt).getTime();
+
+    const matched = emotions.filter(e => {
+      const emMs = new Date(e.createdAt).getTime();
+      return Math.abs(dreamMs - emMs) <= THREE_DAYS_MS;
+    });
+
+    for (const emotion of matched) {
+      timeline.push({
+        dreamId: dream._id.toString(),
+        dreamText: (dream.textoSonho || '').substring(0, 120),
+        dreamCategory: dream.dreamCategory,
+        emotionId: emotion._id.toString(),
+        emotion: emotion.emotion,
+        date: dream.createdAt,
+      });
+    }
+  }
+
+  timeline.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  // ── 5. Montar resposta ──────────────────────────────────────
   const correlations = [];
 
   for (const [emotion, categories] of Object.entries(corrMap)) {
@@ -95,7 +121,7 @@ exports.getCorrelations = asyncHandler(async (req, res) => {
 
   correlations.sort((a, b) => b.occurrences - a.occurrences);
 
-  // ── 5. Distribuição de categorias (para o gráfico) ──────────
+  // ── 6. Distribuição de categorias (para o gráfico) ──────────
   const dreamCategoryCounts = {};
   for (const cat of DREAM_CATEGORIES) dreamCategoryCounts[cat] = 0;
   for (const dream of dreams) {
@@ -104,7 +130,7 @@ exports.getCorrelations = asyncHandler(async (req, res) => {
     }
   }
 
-  // ── 6. Matriz de calor (emotion × category em %) ────────────
+  // ── 7. Matriz de calor (emotion × category em %) ────────────
   const heatEmotions = [...new Set(correlations.map(c => c.emotion))].sort();
   const heatRows = heatEmotions.map(emotion => {
     const row = { emotion };
@@ -115,7 +141,7 @@ exports.getCorrelations = asyncHandler(async (req, res) => {
     return row;
   });
 
-  // ── 7. Insights ─────────────────────────────────────────────
+  // ── 8. Insights ─────────────────────────────────────────────
   const insights = [];
 
   if (correlations.length === 0) {
@@ -159,6 +185,7 @@ exports.getCorrelations = asyncHandler(async (req, res) => {
     correlations,
     dreamCategories: dreamCategoryCounts,
     correlationTable: heatRows,
+    timeline,
     insights,
   });
 });

@@ -75,6 +75,19 @@ app.use('/api/insights', require('./routes/dreamEmotionCorrelationRoutes'));
 app.use('/api/emotions', require('./routes/emotionInsightsRoutes'));
 app.use('/api/emotions', require('./routes/emotionRoutes'));
 app.use('/api/numerology-name', require('./routes/numerologyNameRoutes'));
+app.use('/api/analytics', require('./routes/analyticsRoutes'));
+app.use('/api/dashboard', require('./routes/dashboardRoutes'));
+app.use('/api/home-companion', require('./routes/homeCompanionRoutes'));
+app.use('/api/home', require('./routes/homeRoutes'));
+app.use('/api/daily-checkin', require('./routes/dailyCheckinRoutes'));
+app.use('/api/insights', require('./routes/insightRoutes'));
+app.use('/api/report', require('./routes/reportRoutes'));
+app.use('/api/favorites', require('./routes/favoriteRoutes'));
+app.use('/api/collections', require('./routes/collectionRoutes'));
+app.use('/api/chat', require('./routes/chatRoutes'));
+app.use('/api/dream-coach', require('./routes/dreamCoachRoutes'));
+app.use('/api/timeline', require('./routes/timelineRoutes'));
+app.use('/api/life-insights', require('./routes/lifeInsightsRoutes'));
 
 if (process.env.NODE_ENV !== 'production') {
   app.get('/api/debug/image-providers', (_req, res) => {

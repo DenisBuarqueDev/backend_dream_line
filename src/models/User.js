@@ -311,7 +311,10 @@ UserSchema.methods.canAccessFeature = function(feature) {
     'numerology': planInfo.canUseNumerology,
     'astral_chart': planInfo.canGenerateImage,
     'emotion_insights': planInfo.isPremium,
-    'chat_emotional': planInfo.isPremium
+    'chat_emotional': planInfo.isPremium,
+    'dream_coach': planInfo.isPremium,
+    'timeline': planInfo.isPremium,
+    'life_insights': planInfo.isPremium
   };
   
   return featureMap[feature] || false;

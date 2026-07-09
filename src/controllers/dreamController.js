@@ -6,6 +6,7 @@ const { calculateDreamNumerology } = require('../services/dreamNumerologyService
 const { checkFeatureAccess } = require('../middleware/planMiddleware');
 const aiGateway = require('../services/ai/aiGatewayService');
 const cloudinaryService = require('../services/cloudinaryService');
+const memoryService = require('../services/memoryService');
 
 const calculateDuration = (horaDormir, horaAcordar) => {
   const parseTime = (time) => {
@@ -52,7 +53,7 @@ const createDream = async (req, res, next) => {
 
     await user.incrementDreamCount();
 
-    let aiResult = { interpretacao: '', categorias: [], padroes: { tematicos: [], espirituais: [], biologicos: [] } };
+    let aiResult = { interpretacao: '', categorias: [], padroes: { tematicos: [], espirituais: [], biologicos: [] }, tags: [] };
     let aiData = null;
 
     const astralChart = await AstralChart.findOne({ userId: req.userId })
@@ -94,6 +95,7 @@ const createDream = async (req, res, next) => {
       textoSonho,
       interpretacao: interpretacao || aiResult.interpretacao,
       categorias: categorias || aiResult.categorias,
+      tags: aiResult.tags || [],
       padroes: padroes || aiResult.padroes,
       ...(aiData ? { aiData } : {}),
     };
@@ -135,6 +137,8 @@ const createDream = async (req, res, next) => {
       console.warn('Numerologia do sonho não gerada (dados insuficientes):', numerologyError.message);
     }
 
+    memoryService.updateOnNewDream(req.userId, dream);
+
     const updatedPlanInfo = user.checkUserPlan();
 
     return successResponse(res, {
@@ -159,23 +163,82 @@ const getDreams = async (req, res, next) => {
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
     const skip = (page - 1) * limit;
 
-    const [dreams, total] = await Promise.all([
-      Dream.find({ userId: req.userId })
-        .sort({ createdAt: -1 })
+    const filter = { userId: req.userId };
+
+    if (req.query.search) {
+      const searchRegex = new RegExp(req.query.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      filter.$or = [
+        { textoSonho: searchRegex },
+        { interpretacao: searchRegex },
+        { 'tags.name': searchRegex },
+        { 'aiData.symbols.symbol': searchRegex },
+        { 'aiData.emotions': searchRegex },
+        { dreamCategory: searchRegex },
+      ];
+    }
+
+    if (req.query.category) {
+      filter.dreamCategory = req.query.category;
+    }
+
+    if (req.query.startDate || req.query.endDate) {
+      const dateFilter = {};
+      if (req.query.startDate) {
+        const start = new Date(req.query.startDate);
+        start.setHours(0, 0, 0, 0);
+        dateFilter.$gte = start;
+      }
+      if (req.query.endDate) {
+        const end = new Date(req.query.endDate);
+        end.setHours(23, 59, 59, 999);
+        dateFilter.$lte = end;
+      }
+      filter.createdAt = dateFilter;
+    }
+
+    if (req.query.hasInterpretation === 'true') {
+      filter.interpretacao = { $ne: null };
+    }
+
+    if (req.query.hasImage === 'true') {
+      filter.imageUrl = { $ne: null };
+    }
+
+    if (req.query.hasNumerology === 'true') {
+      filter.dreamNumerology = { $ne: null };
+    }
+
+    let sortOption = { createdAt: -1 };
+    if (req.query.sort === 'oldest') sortOption = { createdAt: 1 };
+    else if (req.query.sort === 'longestSleep') sortOption = { 'sono.duracaoHoras': -1 };
+    else if (req.query.sort === 'shortestSleep') sortOption = { 'sono.duracaoHoras': 1 };
+
+    const [dreams, total, availableCategories] = await Promise.all([
+      Dream.find(filter)
+        .sort(sortOption)
         .skip(skip)
         .limit(limit),
-      Dream.countDocuments({ userId: req.userId })
+      Dream.countDocuments(filter),
+      req.query.includeCategories === 'true'
+        ? Dream.distinct('dreamCategory', { userId: req.userId, dreamCategory: { $ne: null } })
+        : Promise.resolve(undefined),
     ]);
 
-    return successResponse(res, {
+    const response = {
       dreams,
       pagination: {
         page,
         limit,
         total,
-        pages: Math.ceil(total / limit)
-      }
-    });
+        pages: Math.ceil(total / limit),
+      },
+    };
+
+    if (availableCategories !== undefined) {
+      response.availableCategories = availableCategories;
+    }
+
+    return successResponse(res, response);
   } catch (error) {
     next(error);
   }
@@ -197,7 +260,7 @@ const deleteDream = async (req, res, next) => {
 
     await Dream.findByIdAndDelete(id);
 
-    return successResponse(res, { message: 'Dream deleted successfully' });
+    return successResponse(res, { message: 'Sonho excluído com sucesso.' });
   } catch (error) {
     next(error);
   }
@@ -293,4 +356,116 @@ const generateImage = async (req, res, next) => {
   }
 };
 
-module.exports = { createDream, getDreams, deleteDream, searchDreamsByDate, generateImage };
+const reinterpretDream = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const dream = await Dream.findOne({ _id: id, userId: req.userId });
+    if (!dream) {
+      return errorResponse(res, 'Sonho não encontrado', 404);
+    }
+
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return errorResponse(res, 'Usuário não encontrado', 404);
+    }
+
+    const incremented = await user.incrementInterpretationCount();
+    if (!incremented) {
+      return errorResponse(res, 'Limite de interpretações diárias atingido. Faça upgrade para continuar.', 403);
+    }
+
+    const astralChart = await AstralChart.findOne({ userId: req.userId })
+      .sort({ createdAt: -1 }).lean();
+
+    const userContext = astralChart
+      ? { sunSign: astralChart.sunSign, moonSign: astralChart.moonSign, ascendant: astralChart.ascendant }
+      : {};
+
+    const pipelineResult = await aiGateway.processDreamPipeline(dream.textoSonho, userContext, {
+      generateImage: false,
+      psychologicalAnalysis: true,
+    });
+
+    if (pipelineResult.interpretation === dream.interpretacao) {
+      return successResponse(res, {
+        message: 'A interpretação gerada é idêntica à atual. Nenhuma alteração necessária.',
+        dream,
+      });
+    }
+
+    dream.interpretacao = pipelineResult.interpretation;
+    dream.categorias = pipelineResult.categorias;
+    dream.tags = pipelineResult.tags || [];
+    dream.padroes = {
+      tematicos: pipelineResult.padroes?.tematicos || [],
+      espirituais: pipelineResult.padroes?.espirituais || [],
+      biologicos: pipelineResult.padroes?.biologicos || [],
+    };
+
+    dream.aiData = {
+      transcription: null,
+      interpretation: pipelineResult.interpretation,
+      emotions: pipelineResult.emotions || [],
+      numerology: pipelineResult.numerology || null,
+      spiritualMessage: pipelineResult.spiritualMessage || null,
+      symbols: pipelineResult.symbols || [],
+      frequencies: pipelineResult.energy ? [pipelineResult.energy] : [],
+      chakra: pipelineResult.numerology?.chakra || null,
+      psychologicalAnalysis: pipelineResult.psychologicalAnalysis || null,
+      provider: pipelineResult.provider || null,
+      generatedAt: new Date(),
+    };
+
+    await dream.save();
+
+    memoryService.updateOnReinterpret(req.userId);
+
+    return successResponse(res, {
+      message: 'Interpretação atualizada com sucesso',
+      dream,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const updateDream = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { textoSonho, sono } = req.body;
+
+    const dream = await Dream.findOne({ _id: id, userId: req.userId });
+    if (!dream) {
+      return errorResponse(res, 'Sonho não encontrado', 404);
+    }
+
+    if (textoSonho !== undefined) {
+      if (!textoSonho.trim()) {
+        return errorResponse(res, 'textoSonho is required', 400);
+      }
+      dream.textoSonho = textoSonho;
+    }
+
+    if (sono !== undefined) {
+      dream.sono = {
+        horaDormir: sono.horaDormir || undefined,
+        horaAcordar: sono.horaAcordar || undefined,
+        duracaoHoras: sono.horaDormir && sono.horaAcordar
+          ? calculateDuration(sono.horaDormir, sono.horaAcordar)
+          : undefined,
+      };
+    }
+
+    await dream.save();
+
+    return successResponse(res, {
+      message: 'Sonho atualizado com sucesso.',
+      dream,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { createDream, getDreams, deleteDream, searchDreamsByDate, generateImage, reinterpretDream, updateDream };

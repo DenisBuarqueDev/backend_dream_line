@@ -19,6 +19,7 @@ async function processDreamPipeline(dreamText, userContext = {}, options = {}) {
     spiritualMessage: '',
     energy: '',
     symbols: [],
+    tags: [],
     image: null,
     psychologicalAnalysis: '',
     provider: 'deepseek',
@@ -34,6 +35,7 @@ async function processDreamPipeline(dreamText, userContext = {}, options = {}) {
       spiritualMessage: deepseekResult.spiritualMessage || '',
       energy: deepseekResult.energy || '',
       symbols: deepseekResult.symbols || [],
+      tags: deepseekResult.tags || [],
       numerology: deepseekResult.numerology || null,
     });
   } catch (error) {

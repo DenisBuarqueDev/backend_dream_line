@@ -20,6 +20,11 @@ const DreamNumerologySchema = new mongoose.Schema({
   spiritualMessage: String
 }, { _id: false });
 
+const DreamTagSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  type: { type: String, required: true }
+}, { _id: false });
+
 const DreamSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -36,6 +41,7 @@ const DreamSchema = new mongoose.Schema({
   categorias: [{
     type: String
   }],
+  tags: [DreamTagSchema],
   padroes: {
     tematicos: [String],
     espirituais: [String],
@@ -102,5 +108,8 @@ const DreamSchema = new mongoose.Schema({
 
 DreamSchema.index({ userId: 1, createdAt: -1 });
 DreamSchema.index({ userId: 1, 'sono.duracaoHoras': 1 });
+DreamSchema.index({ userId: 1, 'tags.name': 1 });
+DreamSchema.index({ textoSonho: 'text', interpretacao: 'text', 'tags.name': 'text', 'aiData.symbols.symbol': 'text', 'aiData.emotions': 'text', dreamCategory: 'text' },
+  { weights: { textoSonho: 10, interpretacao: 5, 'tags.name': 8, 'aiData.symbols.symbol': 3, 'aiData.emotions': 3, dreamCategory: 6 } });
 
 module.exports = mongoose.model('Dream', DreamSchema);

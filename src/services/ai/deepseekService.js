@@ -3,6 +3,11 @@ const { AI_PROVIDERS } = require('../../config/aiProviders');
 
 const devLog = process.env.NODE_ENV !== 'production' ? console.log : () => {};
 
+const TAG_TYPES = [
+  'Pessoa', 'Lugar', 'Emoção', 'Símbolo', 'Ação',
+  'Tema', 'Espiritualidade', 'Animal', 'Objeto', 'Situação'
+];
+
 const PROMPTS = {
   interpretDream: `Você é um especialista em interpretação de sonhos com abordagem emocional, espiritual e psicológica. Analise o sonho abaixo e forneça uma interpretação profunda e humanizada em português brasileiro.
 
@@ -15,6 +20,17 @@ REGRAS:
 - NÃO use linguagem genérica
 - Seja específico sobre os símbolos mencionados
 
+Além da interpretação, gere entre 5 e 10 tags inteligentes que representem os principais elementos do sonho.
+Cada tag deve ter um name (substantivo ou frase curta em português, minúsculo, sem acentos) e um type que classifique o elemento.
+
+Tipos válidos: ${TAG_TYPES.join(', ')}
+
+Regras para as tags:
+- Sempre em português, minúsculo, sem acentos
+- Seja específico (ex: "voo" ao invés de "transporte")
+- Evite tags muito genéricas como "sonho", "noite", "dormir"
+- Distribua entre diferentes tipos quando possível
+
 Formato da resposta (JSON):
 {
   "interpretation": "texto da interpretação",
@@ -23,6 +39,11 @@ Formato da resposta (JSON):
   "energy": "energia predominante (ex: Transformação, Cura, Expansão)",
   "symbols": [
     { "symbol": "nome do símbolo", "meaning": "significado emocional/espiritual" }
+  ],
+  "tags": [
+    { "name": "agua", "type": "Símbolo" },
+    { "name": "familia", "type": "Tema" },
+    { "name": "ansiedade", "type": "Emoção" }
   ]
 }
 
@@ -101,6 +122,32 @@ function parseJSONResponse(text) {
   }
 }
 
+function normalizeTags(rawTags) {
+  if (!Array.isArray(rawTags) || rawTags.length === 0) return [];
+
+  const seen = new Set();
+  const validTypes = new Set(TAG_TYPES);
+
+  return rawTags
+    .filter(t => t && typeof t.name === 'string' && t.name.trim())
+    .map(t => ({
+      name: t.name
+        .toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9\s-]/g, '')
+        .trim(),
+      type: validTypes.has(t.type) ? t.type : 'Tema',
+    }))
+    .filter(t => {
+      if (t.name.length < 2 || t.name.length > 30) return false;
+      if (['sonho', 'noite', 'dormir', 'sonhar'].includes(t.name)) return false;
+      const key = `${t.name}:${t.type}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
 async function interpretDream(dreamText, userContext = {}) {
   const prompt = PROMPTS.interpretDream + dreamText;
 
@@ -129,6 +176,7 @@ async function interpretDream(dreamText, userContext = {}) {
       spiritualMessage: result.spiritualMessage || '',
       energy: result.energy || 'Neutra',
       symbols: result.symbols || [],
+      tags: normalizeTags(result.tags),
       numerology: await generateNumerology(
         result.emotions || [],
         userContext.sunSign,
@@ -186,6 +234,7 @@ async function forwardToClaude(dreamText, userContext, originalError) {
           spiritualMessage: result.spiritualMessage || '',
           energy: result.energy || 'Neutra',
           symbols: result.symbols || [],
+          tags: normalizeTags(result.tags),
           numerology: null,
         };
       }
@@ -273,6 +322,69 @@ async function psychologicalAnalysis(dreamText, interpretation) {
   }
 }
 
+async function generateTags(dreamText, interpretation, emotions) {
+  const prompt = `Com base no sonho abaixo, gere entre 5 e 10 tags inteligentes que representem os principais elementos.
+
+SONHO: ${dreamText}
+INTERPRETAÇÃO: ${interpretation}
+EMOÇÕES: ${JSON.stringify(emotions)}
+
+Responda em JSON:
+{
+  "tags": [
+    { "name": "nome da tag", "type": "Tipo" }
+  ]
+}
+
+Regras:
+- Tags em português, minúsculo, sem acentos
+- Entre 5 e 10 tags
+- Tipos válidos: ${TAG_TYPES.join(', ')}
+- Seja específico, evite tags genéricas como "sonho", "noite", "dormir"
+- Distribua entre diferentes tipos`;
+
+  const requestFn = async () => {
+    const response = await axios(buildRequest([
+      { role: 'system', content: 'Você é um especialista em análise de sonhos e categorização de elementos oníricos.' },
+      { role: 'user', content: prompt },
+    ], 0.5));
+
+    if (response.data.choices && response.data.choices[0]) {
+      const result = parseJSONResponse(response.data.choices[0].message.content);
+      return normalizeTags(result?.tags);
+    }
+    return [];
+  };
+
+  try {
+    return await executeWithRetry(requestFn);
+  } catch {
+    return [];
+  }
+}
+
+async function sendChat(messages, temperature = 0.5) {
+  const requestFn = async () => {
+    const response = await axios(buildRequest(messages, temperature));
+    if (response.data.choices && response.data.choices[0]) {
+      const usage = response.data.usage || {};
+      return {
+        content: response.data.choices[0].message.content.trim(),
+        promptTokens: usage.prompt_tokens != null ? usage.prompt_tokens : null,
+        completionTokens: usage.completion_tokens != null ? usage.completion_tokens : null,
+      };
+    }
+    throw new Error('DeepSeek não retornou resposta válida no chat');
+  };
+
+  try {
+    return await executeWithRetry(requestFn);
+  } catch (error) {
+    console.error('❌ DeepSeek chat error:', error.message);
+    throw error;
+  }
+}
+
 async function translateToEnglish(text) {
   if (!text || text.trim().length === 0) return text;
 
@@ -303,4 +415,7 @@ module.exports = {
   generateSpiritualMessage,
   psychologicalAnalysis,
   translateToEnglish,
+  generateTags,
+  normalizeTags,
+  sendChat,
 };

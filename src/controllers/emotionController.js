@@ -2,6 +2,7 @@ const EmotionJournal = require('../models/EmotionJournal');
 const EmotionConversation = require('../models/EmotionConversation');
 const emotionAnalysisService = require('../services/emotionAnalysisService');
 const { successResponse, errorResponse } = require('../utils/response');
+const memoryService = require('../services/memoryService');
 
 exports.createEmotion = async (req, res, next) => {
   try {
@@ -38,6 +39,8 @@ exports.createEmotion = async (req, res, next) => {
       aiSummary: analysis.aiSummary,
     });
 
+    memoryService.updateOnNewEmotion(req.userId, emotion);
+
     successResponse(res, { emotion, analysis }, 201);
   } catch (error) {
     next(error);
@@ -46,17 +49,34 @@ exports.createEmotion = async (req, res, next) => {
 
 exports.getEmotions = async (req, res, next) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 20));
     const skip = (page - 1) * limit;
 
+    const filter = { userId: req.userId };
+
+    if (req.query.startDate || req.query.endDate) {
+      const dateFilter = {};
+      if (req.query.startDate) {
+        const start = new Date(req.query.startDate);
+        start.setHours(0, 0, 0, 0);
+        dateFilter.$gte = start;
+      }
+      if (req.query.endDate) {
+        const end = new Date(req.query.endDate);
+        end.setHours(23, 59, 59, 999);
+        dateFilter.$lte = end;
+      }
+      filter.createdAt = dateFilter;
+    }
+
     const [emotions, total] = await Promise.all([
-      EmotionJournal.find({ userId: req.userId })
+      EmotionJournal.find(filter)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
         .lean(),
-      EmotionJournal.countDocuments({ userId: req.userId }),
+      EmotionJournal.countDocuments(filter),
     ]);
 
     successResponse(res, {
