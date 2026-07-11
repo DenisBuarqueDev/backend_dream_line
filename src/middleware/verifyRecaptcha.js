@@ -1,6 +1,11 @@
 const MIN_SCORE = 0.5;
 
 const verifyRecaptcha = async (req, res, next) => {
+  const platform = (req.headers['x-platform'] || '').toLowerCase();
+  if (platform === 'mobile') {
+    return next();
+  }
+
   const recaptchaToken = req.body.recaptchaToken;
 
   if (!recaptchaToken) {
