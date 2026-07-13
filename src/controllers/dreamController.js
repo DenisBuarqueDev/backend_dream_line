@@ -468,4 +468,21 @@ const updateDream = async (req, res, next) => {
   }
 };
 
-module.exports = { createDream, getDreams, deleteDream, searchDreamsByDate, generateImage, reinterpretDream, updateDream };
+const getDreamById = async (req, res, next) => {
+  try {
+    const dream = await Dream.findOne({
+      _id: req.params.id,
+      userId: req.userId,
+    });
+
+    if (!dream) {
+      return errorResponse(res, 'Sonho não encontrado.', 404);
+    }
+
+    successResponse(res, { dream });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { createDream, getDreams, getDreamById, deleteDream, searchDreamsByDate, generateImage, reinterpretDream, updateDream };
