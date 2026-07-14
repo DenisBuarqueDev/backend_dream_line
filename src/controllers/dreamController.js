@@ -312,13 +312,19 @@ const generateImage = async (req, res, next) => {
       return errorResponse(res, 'Dream not found', 404);
     }
 
+    console.log('[FLUX_INVESTIGACAO] Dream carregado | _id:', id, '| userId:', req.userId, '| imageUrl atual:', dream.imageUrl ? dream.imageUrl.substring(0, 60) : 'null', '| imageGeneratedAt:', dream.imageGeneratedAt, '| imagePrompt exists:', !!dream.aiData?.imagePrompt, '| interpretacao exists:', !!dream.interpretacao, '| aiData.interpretation exists:', !!dream.aiData?.interpretation, '| emotions:', JSON.stringify(dream.aiData?.emotions || []), '| textoSonho length:', dream.textoSonho?.length);
+
     if (!imageUrl) {
+      console.log('[FLUX_INVESTIGACAO] BRANCH: Gerando nova imagem (imageUrl vazio)');
       try {
         const interpretacao = dream.aiData?.interpretation || dream.interpretacao;
         const emotions = dream.aiData?.emotions || [];
+        const interpretacaoSource = dream.aiData?.interpretation ? 'aiData.interpretation' : (dream.interpretacao ? 'dream.interpretacao' : 'indefinido');
+        console.log('[FLUX_INVESTIGACAO] Prompt source:', interpretacaoSource, '| interpretacao length:', interpretacao?.length || 0, '| emotions:', JSON.stringify(emotions), '| context dreamText length:', dream.textoSonho?.length || 0);
         const imageResult = await aiGateway.generateDreamImage(interpretacao, emotions, {
           dreamText: dream.textoSonho,
         });
+        console.log('[FLUX_INVESTIGACAO] generateDreamImage retornou | imageUrl:', !!imageResult.imageUrl, '| error:', imageResult.error, '| status:', imageResult.status, '| provider:', imageResult.provider, '| seed:', imageResult.seed, '| prompt exists:', !!imageResult.prompt);
         if (imageResult.imageUrl) {
           dream.imageUrl = imageResult.imageUrl;
           dream.imageGeneratedAt = new Date();
@@ -330,14 +336,18 @@ const generateImage = async (req, res, next) => {
           dream.aiData.imageSeed = imageResult.seed;
           dream.aiData.generatedAt = new Date();
         } else if (imageResult.status === 429) {
+          console.log('[FLUX_INVESTIGACAO] RESULT: 429 rate limit | provider:', imageResult.provider, '| message:', imageResult.message || imageResult.error);
           return errorResponse(res, imageResult.message || 'Limite de uso ou créditos insuficientes', 429);
         } else {
+          console.log('[FLUX_INVESTIGACAO] RESULT: erro no gateway | provider:', imageResult.provider, '| error:', imageResult.error, '| status:', imageResult.status);
           return errorResponse(res, imageResult.error || 'Falha ao gerar imagem', 500);
         }
       } catch (fluxError) {
+        console.log('[FLUX_INVESTIGACAO] EXCEÇÃO no generateDreamImage | message:', fluxError.message, '| stack:', fluxError.stack?.substring(0, 1000));
         return errorResponse(res, `Erro na geração de imagem: ${fluxError.message}`, 500);
       }
     } else {
+      console.log('[FLUX_INVESTIGACAO] BRANCH: Imagem já existe (imageUrl fornecido no body) | imageUrl:', imageUrl?.substring(0, 60));
       dream.imageUrl = imageUrl;
       if (imagePublicId) {
         dream.imagePublicId = imagePublicId;
