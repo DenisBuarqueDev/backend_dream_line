@@ -319,7 +319,6 @@ const generateImage = async (req, res, next) => {
         const imageResult = await aiGateway.generateDreamImage(interpretacao, emotions, {
           dreamText: dream.textoSonho,
         });
-
         if (imageResult.imageUrl) {
           dream.imageUrl = imageResult.imageUrl;
           dream.imageGeneratedAt = new Date();
