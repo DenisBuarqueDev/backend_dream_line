@@ -158,7 +158,9 @@ async function generateDreamImage(interpretation, emotions = [], context = {}) {
     }
 
     const prediction = response.data;
-    console.log('[FLUX_INVESTIGACAO] [' + _invokeId + '] Replicate prediction recebida | id:', prediction.id, '| status:', prediction.status, '| version:', prediction.version, '| tem urls.get:', !!prediction.urls?.get, '| tem output direto:', !!prediction.output, '| output[0]:', prediction.output?.[0] ? prediction.output[0].substring(0, 80) : 'null', '| keys:', Object.keys(prediction).join(','));
+    console.log('[FLUX_INVESTIGACAO] [' + _invokeId + '] ===== PREDICTION COMPLETO (CRIAÇÃO) =====');
+    console.log('[FLUX_INVESTIGACAO] [' + _invokeId + '] ' + JSON.stringify(prediction, null, 2));
+    console.log('[FLUX_INVESTIGACAO] [' + _invokeId + '] ==========================================');
 
     if (prediction.urls && prediction.urls.get) {
       console.log('[FLUX_INVESTIGACAO] [' + _invokeId + '] Iniciando POLLING | url:', prediction.urls.get);
@@ -221,8 +223,37 @@ async function generateDreamImage(interpretation, emotions = [], context = {}) {
       return fallbackResult;
     }
 
-    console.log('[FLUX_INVESTIGACAO] [' + _invokeId + '] FALLBACK ativado (motivo: erro geral no Replicate)');
-    return await fallbackGeneration(prompt, error.message, _invokeId);
+    console.log('[FLUX_INVESTIGACAO] [' + _invokeId + '] Replicate falhou para erro não-429 | verificando fallback...');
+    const _stabilityKey = AI_PROVIDERS.flux.fallback.apiKey || process.env.STABLE_DIFFUSION_API_KEY;
+    if (_stabilityKey) {
+      console.log('[FLUX_INVESTIGACAO] [' + _invokeId + '] Stability AI key presente | tentando fallback...');
+      const fallbackResult = await fallbackGeneration(prompt, error.message, _invokeId);
+      if (fallbackResult.imageUrl) return fallbackResult;
+      const isCreditError = fallbackResult.status === 402 || (typeof fallbackResult.error === 'string' && /credit|insufficient|saldo/i.test(fallbackResult.error));
+      if (isCreditError) {
+        console.log('[FLUX_INVESTIGACAO] [' + _invokeId + '] Stability falhou por créditos | retornando erro original do Replicate');
+        return {
+          imageUrl: null,
+          prompt,
+          seed: null,
+          error: 'O serviço de geração de imagens está temporariamente indisponível. Tente novamente mais tarde.',
+          provider: 'replicate',
+          status: 503,
+        };
+      }
+      console.log('[FLUX_INVESTIGACAO] [' + _invokeId + '] Stability falhou por outro motivo | propagando erro do fallback');
+      return fallbackResult;
+    }
+
+    console.log('[FLUX_INVESTIGACAO] [' + _invokeId + '] Sem Stability API key | retornando erro original do Replicate');
+    return {
+      imageUrl: null,
+      prompt,
+      seed: null,
+      error: 'Replicate não respondeu dentro do tempo esperado.',
+      provider: 'replicate',
+      status: 503,
+    };
   }
 }
 
@@ -320,21 +351,38 @@ async function pollPrediction(url, apiKey, invokeId = '?', maxAttempts = 30) {
       });
     }
 
-    const predStatus = response.data.status;
-    console.log('[FLUX_INVESTIGACAO] [' + invokeId + '] POLLING tentativa', (i + 1) + '/' + maxAttempts, '| status:', predStatus, '| id:', response.data.id);
-    if (predStatus === 'succeeded') {
-      console.log('[FLUX_INVESTIGACAO] [' + invokeId + '] POLLING succeeded | tentativa:', i + 1, '| output:', response.data.output?.[0] ? 'ok' : 'null', '| predict_time:', response.data.metrics?.predict_time);
-      return response.data;
+    const predFull = response.data;
+    console.log('[FLUX_INVESTIGACAO] [' + invokeId + '] POLLING tentativa', (i + 1) + '/' + maxAttempts, '| JSON completo:');
+    console.log('[FLUX_INVESTIGACAO] [' + invokeId + '] ' + JSON.stringify(predFull, null, 2));
+    if (predFull.status === 'succeeded') {
+      console.log('[FLUX_INVESTIGACAO] [' + invokeId + '] POLLING succeeded | tentativa:', i + 1);
+      return predFull;
     }
-    if (predStatus === 'failed') {
-      const errorMsg = `FLUX prediction failed: ${response.data.error}`;
-      console.log('[FLUX_INVESTIGACAO] [' + invokeId + '] POLLING failed | error:', response.data.error, '| id:', response.data.id, '| tentativa:', i + 1);
+    if (predFull.status === 'failed') {
+      const errorMsg = `FLUX prediction failed: ${predFull.error}`;
+      console.log('[FLUX_INVESTIGACAO] [' + invokeId + '] POLLING failed | error:', predFull.error, '| id:', predFull.id, '| tentativa:', i + 1);
       throw new Error(errorMsg);
     }
 
     await new Promise(resolve => setTimeout(resolve, 1000));
   }
-  console.log('[FLUX_INVESTIGACAO] [' + invokeId + '] POLLING TIMEOUT após', maxAttempts, 'tentativas');
+
+  // Timeout — fazer uma consulta final manual para capturar o estado atual
+  console.log('[FLUX_INVESTIGACAO] [' + invokeId + '] ===== POLLING TIMEOUT — CONSULTA FINAL =====');
+  try {
+    const finalResponse = await axios({
+      url,
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+      timeout: 10000,
+    });
+    console.log('[FLUX_INVESTIGACAO] [' + invokeId + '] Consulta final status:', finalResponse.status);
+    console.log('[FLUX_INVESTIGACAO] [' + invokeId + '] ' + JSON.stringify(finalResponse.data, null, 2));
+  } catch (finalErr) {
+    console.log('[FLUX_INVESTIGACAO] [' + invokeId + '] Consulta final FALHOU | message:', finalErr.message);
+  }
+  console.log('[FLUX_INVESTIGACAO] [' + invokeId + '] ============================================');
+
   throw new Error('FLUX prediction timeout');
 }
 
