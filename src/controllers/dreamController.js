@@ -316,9 +316,13 @@ const generateImage = async (req, res, next) => {
       try {
         const interpretacao = dream.aiData?.interpretation || dream.interpretacao;
         const emotions = dream.aiData?.emotions || [];
+        console.log('[FLUX_INVESTIGACAO] Controller: chamando aiGateway.generateDreamImage | dreamId:', id, '| userId:', req.userId, '| interpretacao length:', interpretacao?.length, '| emotions count:', emotions?.length, '| dream.textoSonho length:', dream.textoSonho?.length);
+        const _ctrlStart = Date.now();
         const imageResult = await aiGateway.generateDreamImage(interpretacao, emotions, {
           dreamText: dream.textoSonho,
         });
+        const _ctrlElapsed = Date.now() - _ctrlStart;
+        console.log('[FLUX_INVESTIGACAO] Controller: aiGateway retornou | imageUrl:', !!imageResult.imageUrl, '| error:', imageResult.error, '| status:', imageResult.status, '| provider:', imageResult.provider, '| elapsed:', _ctrlElapsed, 'ms');
         if (imageResult.imageUrl) {
           dream.imageUrl = imageResult.imageUrl;
           dream.imageGeneratedAt = new Date();
@@ -330,11 +334,14 @@ const generateImage = async (req, res, next) => {
           dream.aiData.imageSeed = imageResult.seed;
           dream.aiData.generatedAt = new Date();
         } else if (imageResult.status === 429) {
+          console.log('[FLUX_INVESTIGACAO] Controller: 429 retornado pelo gateway | provider:', imageResult.provider, '| message:', imageResult.message || imageResult.error);
           return errorResponse(res, imageResult.message || 'Limite de uso ou créditos insuficientes', 429);
         } else {
+          console.log('[FLUX_INVESTIGACAO] Controller: erro retornado pelo gateway | error:', imageResult.error, '| provider:', imageResult.provider);
           return errorResponse(res, imageResult.error || 'Falha ao gerar imagem', 500);
         }
       } catch (fluxError) {
+        console.log('[FLUX_INVESTIGACAO] Controller: EXCEÇÃO no aiGateway.generateDreamImage | message:', fluxError.message, '| stack:', fluxError.stack?.substring(0, 500));
         return errorResponse(res, `Erro na geração de imagem: ${fluxError.message}`, 500);
       }
     } else {

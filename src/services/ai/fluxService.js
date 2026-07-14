@@ -84,25 +84,23 @@ function buildPrompt(interpretation, emotions = [], additionalContext = '') {
 }
 
 async function generateDreamImage(interpretation, emotions = [], context = {}) {
+  const _startTime = Date.now();
   const promptPt = interpretation;
   const contextPt = context.additionalContext || '';
-  devLog('📝 Prompt PT:', promptPt.substring(0, 200));
 
   const promptEn = await deepseekService.translateToEnglish(promptPt);
   const contextEn = contextPt
     ? await deepseekService.translateToEnglish(contextPt)
     : '';
-  devLog('📝 Prompt EN:', promptEn.substring(0, 200));
-
   const prompt = buildPrompt(promptEn, emotions, contextEn);
 
   const config = AI_PROVIDERS.flux.primary;
   const apiKey = process.env.FLUX_API_KEY || process.env.REPLICATE_API_KEY;
 
-  devLog('📤 Prompt FLUX:', prompt.substring(0, 200));
+  console.log('[FLUX_INVESTIGACAO] generateDreamImage | prompt length:', prompt.length, '| emotions:', emotions?.length, '| apiKey configurada:', !!apiKey, '| timeout config:', AI_PROVIDERS.flux.timeout, '| retries:', AI_PROVIDERS.flux.retries);
 
   if (!apiKey) {
-    console.error('❌ FLUX_API_KEY não configurada');
+    console.error('[FLUX_INVESTIGACAO] FLUX_API_KEY não configurada — abortando');
     return {
       imageUrl: null,
       prompt,
@@ -112,7 +110,8 @@ async function generateDreamImage(interpretation, emotions = [], context = {}) {
   }
 
   const requestFn = async () => {
-    devLog('🎨 Provider: Replicate (FLUX)');
+    const _reqStart = Date.now();
+    console.log('[FLUX_INVESTIGACAO] requestFn: enviando POST para Replicate | url:', config.url, '| go_fast: true | output_format: webp | timeout:', AI_PROVIDERS.flux.timeout);
     const response = await axios({
       url: config.url,
       method: 'POST',
@@ -134,28 +133,32 @@ async function generateDreamImage(interpretation, emotions = [], context = {}) {
       validateStatus: (status) => status < 500,
     });
 
-    devLog('🎨 Status Replicate:', response.status);
+    const _reqElapsed = Date.now() - _reqStart;
+    console.log('[FLUX_INVESTIGACAO] Replicate resposta recebida | status:', response.status, '| elapsed:', _reqElapsed, 'ms | headers content-type:', response.headers?.['content-type']);
 
     if (response.status === 429) {
+      console.log('[FLUX_INVESTIGACAO] Replicate 429 (rate limit) — lançando exceção');
       throw Object.assign(new Error('Limite de uso ou créditos insuficientes na Replicate API'), {
         status: 429, provider: 'replicate', response: response.data,
       });
     }
 
     if (response.status !== 200 && response.status !== 201) {
-      throw Object.assign(new Error(`Replicate retornou status ${response.status}: ${JSON.stringify(response.data).substring(0, 200)}`), {
+      const responsePreview = JSON.stringify(response.data).substring(0, 500);
+      console.log('[FLUX_INVESTIGACAO] Replicate status inesperado:', response.status, '| response preview:', responsePreview);
+      throw Object.assign(new Error(`Replicate retornou status ${response.status}: ${responsePreview}`), {
         status: response.status, provider: 'replicate', response: response.data,
       });
     }
 
     const prediction = response.data;
-    devLog('📥 Resposta FLUX (primeiro 400 chars):', JSON.stringify(prediction).substring(0, 400));
+    console.log('[FLUX_INVESTIGACAO] Replicate prediction | id:', prediction.id, '| status:', prediction.status, '| tem urls.get:', !!prediction.urls?.get, '| tem output:', !!prediction.output, '| output[0]:', prediction.output?.[0] || 'null', '| response keys:', Object.keys(prediction).join(','));
 
     if (prediction.urls && prediction.urls.get) {
-      devLog('🔗 URL de polling Replicate:', prediction.urls.get);
+      console.log('[FLUX_INVESTIGACAO] Iniciando polling | url:', prediction.urls.get);
       const result = await pollPrediction(prediction.urls.get, apiKey);
       const imageUrl = result.output?.[0] || null;
-      devLog('🔗 URL da imagem gerada (output[0]):', imageUrl);
+      console.log('[FLUX_INVESTIGACAO] Polling concluído | imageUrl:', !!imageUrl, '| predict_time:', result.metrics?.predict_time, '| total elapsed:', Date.now() - _startTime, 'ms');
       return {
         imageUrl,
         prompt,
@@ -164,7 +167,7 @@ async function generateDreamImage(interpretation, emotions = [], context = {}) {
     }
 
     const imageUrl = prediction.output?.[0] || null;
-    devLog('🔗 URL da imagem (resposta direta):', imageUrl);
+    console.log('[FLUX_INVESTIGACAO] Resposta direta (sem polling) | imageUrl:', !!imageUrl, '| total elapsed:', Date.now() - _startTime, 'ms');
     return {
       imageUrl,
       prompt,
@@ -173,9 +176,9 @@ async function generateDreamImage(interpretation, emotions = [], context = {}) {
   };
 
   try {
-    devLog('🎨 FLUX: enviando requisição para Replicate...');
+    console.log('[FLUX_INVESTIGACAO] Chamando executeWithRetry | retries:', AI_PROVIDERS.flux.retries, '| retryDelay:', AI_PROVIDERS.flux.retryDelay);
     const result = await executeWithRetry(requestFn, AI_PROVIDERS.flux.retries);
-    devLog('✅ FLUX: imagem gerada com sucesso');
+    console.log('[FLUX_INVESTIGACAO] executeWithRetry sucesso | imageUrl:', !!result.imageUrl, '| cloudinaryPublicId:', !!result.cloudinaryPublicId, '| total elapsed:', Date.now() - _startTime, 'ms');
 
     if (result.imageUrl) {
       const cloudinaryResult = await uploadToCloudinaryFromUrl(result.imageUrl);
@@ -188,13 +191,10 @@ async function generateDreamImage(interpretation, emotions = [], context = {}) {
     return result;
   } catch (error) {
     const fluxStatus = error.status || error.response?.status || 500;
-    console.error('❌ Image Generation Error');
-    console.error('❌ Provider: Replicate (FLUX)');
-    console.error('❌ Status:', fluxStatus);
-    console.error('❌ Data:', error.response ? JSON.stringify(error.response) : error.message);
+    console.error('[FLUX_INVESTIGACAO] EXCEÇÃO EM executeWithRetry | status:', fluxStatus, '| message:', error.message, '| stack:', error.stack?.substring(0, 800), '| total elapsed:', Date.now() - _startTime, 'ms');
 
     if (fluxStatus === 429) {
-      devLog('⚠️ FLUX rate limitado, tentando fallback...');
+      console.log('[FLUX_INVESTIGACAO] FALLBACK: Replicate 429 — tentando Stability');
       const fallbackResult = await fallbackGeneration(prompt, error.message);
       if (fallbackResult.imageUrl) return fallbackResult;
       fallbackResult.provider = 'replicate';
@@ -203,7 +203,7 @@ async function generateDreamImage(interpretation, emotions = [], context = {}) {
       return fallbackResult;
     }
 
-    devLog('⚠️ fallback ativado: tentando Stability AI...');
+    console.log('[FLUX_INVESTIGACAO] FALLBACK: erro geral no Replicate — tentando Stability | motivo:', error.message);
     return await fallbackGeneration(prompt, error.message);
   }
 }
@@ -296,18 +296,26 @@ async function pollPrediction(url, apiKey, maxAttempts = 30) {
     });
 
     if (response.status === 429) {
+      console.log('[FLUX_INVESTIGACAO] Polling 429 (rate limit)');
       throw Object.assign(new Error('Limite de uso ou créditos insuficientes na Replicate API (polling)'), {
         status: 429, provider: 'replicate',
       });
     }
 
     const predStatus = response.data.status;
-    devLog(`⏳ Polling Replicate tentativa ${i + 1}/${maxAttempts}: status=${predStatus}, http=${response.status}`);
-    if (predStatus === 'succeeded') return response.data;
-    if (predStatus === 'failed') throw new Error(`FLUX prediction failed: ${response.data.error}`);
+    console.log('[FLUX_INVESTIGACAO] Polling tentativa', (i + 1) + '/' + maxAttempts, '| predStatus:', predStatus, '| http:', response.status, '| id:', response.data.id);
+    if (predStatus === 'succeeded') {
+      console.log('[FLUX_INVESTIGACAO] Polling concluído com sucesso na tentativa', (i + 1));
+      return response.data;
+    }
+    if (predStatus === 'failed') {
+      console.log('[FLUX_INVESTIGACAO] Polling falhou | error:', response.data.error);
+      throw new Error(`FLUX prediction failed: ${response.data.error}`);
+    }
 
     await new Promise(resolve => setTimeout(resolve, 1000));
   }
+  console.log('[FLUX_INVESTIGACAO] Polling excedeu', maxAttempts, 'tentativas — timeout');
   throw new Error('FLUX prediction timeout');
 }
 
@@ -315,11 +323,14 @@ async function executeWithRetry(requestFn, retries = 2) {
   const delay = AI_PROVIDERS.flux.retryDelay;
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
+      console.log('[FLUX_INVESTIGACAO] executeWithRetry tentativa', attempt, '/', retries);
       return await requestFn();
     } catch (error) {
-      devWarn(`⚠️ Tentativa ${attempt}/${retries} falhou:`, error.message, '| status:', error.status || error.response?.status);
+      const errorStatus = error.status || error.response?.status || 'sem status';
+      console.log('[FLUX_INVESTIGACAO] executeWithRetry tentativa', attempt, '/', retries, 'FALHOU | error.message:', error.message, '| status:', errorStatus, '| provider:', error.provider, '| stack:', error.stack?.substring(0, 400));
       if (error.status === 429) throw error;
       if (attempt === retries) throw error;
+      console.log('[FLUX_INVESTIGACAO] executeWithRetry aguardando', delay * attempt, 'ms antes de retentar');
       await new Promise(resolve => setTimeout(resolve, delay * attempt));
     }
   }
