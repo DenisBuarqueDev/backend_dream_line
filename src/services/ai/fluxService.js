@@ -257,6 +257,119 @@ async function generateDreamImage(interpretation, emotions = [], context = {}) {
   }
 }
 
+async function generateDreamImageMobile(interpretation, emotions = [], context = {}) {
+  const _invokeId = Date.now().toString(36) + Math.random().toString(36).substring(2, 6);
+  const _start = Date.now();
+  const promptPt = interpretation;
+  const contextPt = context.additionalContext || '';
+
+  const promptEn = await deepseekService.translateToEnglish(promptPt);
+  const contextEn = contextPt
+    ? await deepseekService.translateToEnglish(contextPt)
+    : '';
+
+  const prompt = buildPrompt(promptEn, emotions, contextEn);
+
+  const config = AI_PROVIDERS.flux.primary;
+  const apiKey = process.env.FLUX_API_KEY || process.env.REPLICATE_API_KEY;
+
+  if (!apiKey) {
+    return { imageUrl: null, prompt, seed: null, error: 'FLUX_API_KEY não configurada' };
+  }
+
+  const requestFn = async () => {
+    const requestBody = {
+      input: {
+        prompt,
+        num_outputs: 1,
+        aspect_ratio: '16:9',
+        output_format: 'webp',
+        go_fast: true,
+        output_quality: 80,
+      },
+    };
+    const response = await axios({
+      url: config.url,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      data: requestBody,
+      timeout: AI_PROVIDERS.flux.timeout,
+      validateStatus: (status) => status < 500,
+    });
+
+    if (response.status === 429) {
+      throw Object.assign(new Error('Limite de uso ou créditos insuficientes na Replicate API'), {
+        status: 429, provider: 'replicate', response: response.data,
+      });
+    }
+
+    if (response.status !== 200 && response.status !== 201) {
+      const responsePreview = JSON.stringify(response.data).substring(0, 500);
+      throw Object.assign(new Error(`Replicate retornou status ${response.status}: ${responsePreview}`), {
+        status: response.status, provider: 'replicate', response: response.data,
+      });
+    }
+
+    const prediction = response.data;
+
+    if (prediction.urls && prediction.urls.get) {
+      const pollResult = await pollPrediction(prediction.urls.get, apiKey, _invokeId);
+      const imageUrl = pollResult.output?.[0] || null;
+      return {
+        imageUrl,
+        prompt,
+        seed: pollResult.metrics?.predict_time ? Math.floor(pollResult.metrics.predict_time * 1000) : null,
+      };
+    }
+
+    const imageUrl = prediction.output?.[0] || null;
+    return {
+      imageUrl,
+      prompt,
+      seed: prediction.metrics?.predict_time ? Math.floor(prediction.metrics.predict_time * 1000) : null,
+    };
+  };
+
+  try {
+    const result = await executeWithRetry(requestFn, AI_PROVIDERS.flux.retries, _invokeId);
+
+    if (result.imageUrl) {
+      const cloudinaryResult = await uploadToCloudinaryFromUrl(result.imageUrl);
+      if (cloudinaryResult) {
+        result.imageUrl = cloudinaryResult.url;
+        result.cloudinaryPublicId = cloudinaryResult.publicId;
+      }
+    }
+
+    return result;
+  } catch (error) {
+    const fluxStatus = error.status || error.response?.status || 500;
+
+    if (fluxStatus === 429) {
+      return {
+        imageUrl: null,
+        prompt,
+        seed: null,
+        error: 'Limite de uso ou créditos insuficientes',
+        provider: 'replicate',
+        status: 429,
+      };
+    }
+
+    return {
+      imageUrl: null,
+      prompt,
+      seed: null,
+      error: error.message || 'Erro na geração de imagem pelo Replicate',
+      provider: 'replicate',
+      status: fluxStatus,
+    };
+  }
+}
+
 async function uploadToCloudinaryFromUrl(imageUrl) {
   if (!cloudinaryService.isConfigured()) {
     devLog('☁ Cloudinary não configurado, usando URL original');
@@ -541,4 +654,4 @@ async function fallbackGeneration(prompt, errorMessage, invokeId = '?') {
   };
 }
 
-module.exports = { generateDreamImage, buildPrompt };
+module.exports = { generateDreamImage, generateDreamImageMobile, buildPrompt };

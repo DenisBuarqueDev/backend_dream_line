@@ -88,6 +88,7 @@ app.use('/api/chat', require('./routes/chatRoutes'));
 app.use('/api/dream-coach', require('./routes/dreamCoachRoutes'));
 app.use('/api/timeline', require('./routes/timelineRoutes'));
 app.use('/api/life-insights', require('./routes/lifeInsightsRoutes'));
+app.use('/api/mobile', require('./routes/mobileRoutes'));
 
 if (process.env.NODE_ENV !== 'production') {
   app.get('/api/debug/image-providers', (_req, res) => {
