@@ -19,9 +19,12 @@ exports.sendMessage = async (req, res, next) => {
       return errorResponse(res, 'ID do sonho inválido.', 400);
     }
 
+    console.log('[INV] dreamChatController.sendMessage calling service userId=', req.userId, 'dreamId=', dreamId, 'message=', message?.substring(0, 50));
     const result = await dreamChatService.sendMessage(req.userId, dreamId, message.trim());
+    console.log('[INV] dreamChatController.sendMessage result=', { answerLength: result.answer?.length, conversationId: result.conversationId });
     successResponse(res, result, 200);
   } catch (error) {
+    console.log('[INV] dreamChatController.sendMessage ERROR=', error.message, 'stack=', error.stack?.substring(0, 300));
     if (error.message === 'Sonho não encontrado.') {
       return errorResponse(res, error.message, 404);
     }

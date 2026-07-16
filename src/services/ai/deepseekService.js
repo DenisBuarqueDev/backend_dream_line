@@ -365,11 +365,15 @@ Regras:
 
 async function sendChat(messages, temperature = 0.5) {
   const requestFn = async () => {
+    console.log('[INV] deepseek.sendChat.request messages.length=', messages.length, 'totalChars=', JSON.stringify(messages).length, 'temperature=', temperature, 'model=', AI_PROVIDERS.deepseek.primary.model);
     const response = await axios(buildRequest(messages, temperature));
+    console.log('[INV] deepseek.sendChat.response status=', response.status, 'hasChoices=', !!response.data?.choices?.length, 'usage=', JSON.stringify(response.data?.usage));
     if (response.data.choices && response.data.choices[0]) {
       const usage = response.data.usage || {};
+      const content = response.data.choices[0].message.content;
+      console.log('[INV] deepseek.sendChat.content length=', content?.length, 'preview=', content?.substring(0, 100));
       return {
-        content: response.data.choices[0].message.content.trim(),
+        content: content.trim(),
         promptTokens: usage.prompt_tokens != null ? usage.prompt_tokens : null,
         completionTokens: usage.completion_tokens != null ? usage.completion_tokens : null,
       };
@@ -380,7 +384,7 @@ async function sendChat(messages, temperature = 0.5) {
   try {
     return await executeWithRetry(requestFn);
   } catch (error) {
-    console.error('❌ DeepSeek chat error:', error.message);
+    console.log('[INV] deepseek.sendChat.ERROR name=', error.name, 'message=', error.message, 'code=', error.code, 'status=', error.response?.status, 'responseData=', JSON.stringify(error.response?.data)?.substring(0, 500), 'stack=', error.stack?.substring(0, 500));
     throw error;
   }
 }
