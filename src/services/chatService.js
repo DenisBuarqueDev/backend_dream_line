@@ -442,13 +442,9 @@ async function sendChat(userId, question, options = {}) {
   const model = AI_PROVIDERS.deepseek.primary.model;
   const temperature = 0.4;
   const startTime = Date.now();
-  console.log('[INV] sendChat.entry userId=', userId, 'question=', question?.substring(0, 80), 'contextType=', contextType, 'dreamId=', dreamId, 'emotionId=', emotionId, 'conversationId=', conversationId);
-
   const { conversationId: cid, conversationTitle, nextIndex } = await findOrCreateConversation(userId, conversationId, newConversation);
-  console.log('[INV] sendChat.findOrCreateConversation cid=', cid, 'title=', conversationTitle, 'nextIndex=', nextIndex);
 
   let context = await buildContext(userId, { contextType, dreamId, emotionId });
-  console.log('[INV] sendChat.buildContext done contextType=', contextType, 'dreamId=', dreamId, 'recentDreams=', context?.recentDreams?.length, 'recentEmotions=', context?.recentEmotions?.length);
   const t1 = Date.now();
   context = selectContext(question, context);
   const t2 = Date.now();
@@ -485,28 +481,22 @@ async function sendChat(userId, question, options = {}) {
   });
 
   let history = await loadConversationHistory(userId, cid, HISTORY_LIMIT);
-  console.log('[INV] sendChat.historyLoaded count=', history.length, 'cids=', history.map(h => h.messageIndex));
 
   const enforced = enforceTokenLimit(context, history);
   history = enforced.history;
-  console.log('[INV] sendChat.afterTokenLimit contextSize=', estimateTokenCount(context), 'historySize=', estimateTokenCount(history));
 
   const { messages } = buildChatPrompt(question, context, history, plan, emotionalState, cognitiveContext, initiative, decisions, strategy);
   const t6 = Date.now();
-  console.log('[INV] sendChat.buildChatPrompt messagesCount=', messages.length, 'roles=', messages.map(m => m.role), 'lastRole=', messages[messages.length - 1]?.role, 'lastContentPreview=', messages[messages.length - 1]?.content?.substring(0, 100));
 
   let answer;
   let promptTokens = null;
   let completionTokens = null;
   try {
-    console.log('[INV] sendChat.callingDeepSeek messageCount=', messages.length);
     const result = await deepseekService.sendChat(messages, temperature);
-    console.log('[INV] sendChat.deepSeekResponse content=', result?.content?.substring(0, 100), 'promptTokens=', result?.promptTokens, 'completionTokens=', result?.completionTokens);
     answer = result.content;
     promptTokens = result.promptTokens;
     completionTokens = result.completionTokens;
   } catch (error) {
-    console.log('[INV] sendChat.deepSeekCATCH error.message=', error.message, 'error.name=', error.name, 'error.code=', error.code, 'error.status=', error.response?.status, 'error.data=', JSON.stringify(error.response?.data)?.substring(0, 300), 'stack=', error.stack?.substring(0, 500));
     answer = 'Desculpe, não foi possível processar sua pergunta agora. Tente novamente em instantes.';
   }
   const t7 = Date.now();
@@ -551,7 +541,6 @@ async function sendChat(userId, question, options = {}) {
     promptTokens,
     completionTokens,
   };
-  console.log('[INV] sendChat.saving docToSave=', { conversationId: cid, messageIndex: nextIndex, contextType, dreamId, emotionId, answerLength: answer?.length });
   await ChatMessage.create(docToSave);
 
   memoryExtraction.extractAndSave(userId, cid, question).catch(() => {});
