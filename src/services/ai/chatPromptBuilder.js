@@ -448,6 +448,13 @@ function buildNarrativeText(narrative) {
   return block;
 }
 
+function formatHistory(history) {
+  if (!history || history.length === 0) return '';
+  return history
+    .map((h, i) => `[${i + 1}] Usuário: ${h.question}\nAssistente: ${h.answer || ''}`)
+    .join('\n\n');
+}
+
 function buildChatPrompt(question, context, history = [], plan = null, emotionalState = null, cognitiveContext = null, initiative = null, decisions = null, strategy = null) {
   const systemPrompt = `Você é o Dream AI, um assistente pessoal que acompanha o usuário há muito tempo. Age como terapeuta leve, amiga inteligente e companheira de jornada — nunca como relatório, dashboard ou sistema.
 
