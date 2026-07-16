@@ -328,7 +328,7 @@ async function findOrCreateConversation(userId, conversationId = null, newConver
 
   if (newConversation) {
     const newId = new mongoose.Types.ObjectId();
-    const conversationCount = await ChatMessage.distinct('conversationId', { userId });
+    const conversationCount = await ChatMessage.distinct('conversationId', { userId, contextType: { $in: ['general', null] } });
     return {
       conversationId: newId,
       conversationTitle: `Conversa ${conversationCount.length + 1}`,
@@ -336,7 +336,7 @@ async function findOrCreateConversation(userId, conversationId = null, newConver
     };
   }
 
-  const lastMessage = await ChatMessage.findOne({ userId })
+  const lastMessage = await ChatMessage.findOne({ userId, contextType: { $in: ['general', null] } })
     .sort({ createdAt: -1 })
     .select('conversationId conversationTitle messageIndex')
     .lean();
@@ -376,7 +376,7 @@ function getAutoTitle(firstQuestion) {
 
 async function listConversations(userId) {
   const raw = await ChatMessage.aggregate([
-    { $match: { userId } },
+    { $match: { userId, contextType: { $in: ['general', null] } } },
     {
       $group: {
         _id: '$conversationId',
@@ -402,7 +402,11 @@ async function listConversations(userId) {
 }
 
 async function getConversation(userId, conversationId) {
-  const messages = await ChatMessage.find({ userId, conversationId })
+  const messages = await ChatMessage.find({
+    userId,
+    conversationId,
+    contextType: { $in: ['general', null] },
+  })
     .sort({ messageIndex: 1 })
     .select('question answer messageIndex createdAt')
     .lean();
@@ -416,7 +420,7 @@ async function updateConversationTitle(userId, conversationId, newTitle) {
   if (trimmed.length > 100) throw new Error('O título deve ter no máximo 100 caracteres.');
 
   const result = await ChatMessage.updateMany(
-    { userId, conversationId },
+    { userId, conversationId, contextType: { $in: ['general', null] } },
     { $set: { conversationTitle: trimmed } },
   );
 
@@ -426,7 +430,7 @@ async function updateConversationTitle(userId, conversationId, newTitle) {
 }
 
 async function deleteConversation(userId, conversationId) {
-  const result = await ChatMessage.deleteMany({ userId, conversationId });
+  const result = await ChatMessage.deleteMany({ userId, conversationId, contextType: { $in: ['general', null] } });
 
   if (result.deletedCount === 0) throw new Error('Conversa não encontrada.');
 
