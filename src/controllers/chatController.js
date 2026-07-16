@@ -4,7 +4,7 @@ const { successResponse, errorResponse } = require('../utils/response');
 
 exports.sendMessage = async (req, res, next) => {
   try {
-    const { message, conversationId, newConversation } = req.body;
+    const { message, conversationId, newConversation, contextType, dreamId, emotionId } = req.body;
 
     if (!message || !message.trim()) {
       return errorResponse(res, 'A mensagem é obrigatória.', 400);
@@ -21,6 +21,9 @@ exports.sendMessage = async (req, res, next) => {
     const result = await chatService.sendChat(req.userId, message.trim(), {
       conversationId: conversationId || null,
       newConversation: !!newConversation,
+      contextType,
+      dreamId,
+      emotionId,
     });
 
     successResponse(res, result, 200);

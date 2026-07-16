@@ -102,7 +102,77 @@ function enforceTokenLimit(context, history) {
   return { context, history };
 }
 
-async function buildContext(userId) {
+function buildFocusedContext({ focusedType, recentDreams, recentEmotions }) {
+  const ctx = {
+    contextVersion: 'v2-focused',
+    focusedType,
+    longTermMemory: [],
+    summaryLongTerm: null,
+    summary: { totalDreams: 0, totalEmotions: 0, avgSleepHours: null },
+    dreamScore: null,
+    profile: null,
+    recentDreams: recentDreams ? recentDreams.map(d => ({
+      summary: truncateAtWord(d.textoSonho, DREAM_SUMMARY_LENGTH),
+      shortInterpretation: truncateAtWord(d.interpretacao, INTERPRETATION_SUMMARY_LENGTH),
+      category: d.dreamCategory,
+      tags: d.tags || [],
+      createdAt: d.createdAt,
+    })) : [],
+    recentEmotions: recentEmotions ? recentEmotions.map(e => ({
+      emotion: e.emotion,
+      intensity: e.intensity,
+      causes: e.causes || [],
+      summary: truncateAtWord(e.originalText, EMOTION_SUMMARY_LENGTH),
+      createdAt: e.createdAt,
+    })) : [],
+    predominantTags: [],
+    predominantCategories: [],
+    recurrentSymbols: [],
+    correlations: {},
+    dreamStats: { categories: [], perMonth: [], mostFrequentCategory: null },
+    emotionStats: { distribution: [], predominant: null, averageIntensity: 0, intensityTrend: {} },
+    sleepStats: { avgSleepHours: null, avgBedTime: null, avgWakeTime: null, trend: {} },
+    reportSummary: null,
+    reportConclusion: null,
+    recommendations: [],
+    warnings: [],
+    positiveHabits: [],
+    dreamCoach: null,
+    timeline: [],
+    proactiveInsights: [],
+    conversationMemories: [],
+    adaptiveProfile: null,
+    personalityProfile: null,
+    lifeInsights: null,
+    activeGoals: [],
+    completedGoals: [],
+    goalProgress: null,
+    qualitySummary: null,
+    importantRelationships: [],
+    activeJourneys: [],
+    continuousNarrative: null,
+  };
+  return ctx;
+}
+
+async function buildContext(userId, options = {}) {
+  const { contextType, dreamId, emotionId } = options;
+
+  if (contextType === 'dream' && dreamId) {
+    const dream = await Dream.findOne({ _id: dreamId, userId })
+      .select('textoSonho interpretacao dreamCategory tags aiData.symbols createdAt')
+      .lean();
+    if (!dream) throw new Error('Sonho não encontrado.');
+    return buildFocusedContext({ focusedType: 'dream', recentDreams: [dream] });
+  }
+
+  if (contextType === 'emotion' && emotionId) {
+    const emotion = await EmotionJournal.findOne({ _id: emotionId, userId })
+      .select('emotion intensity causes originalText createdAt')
+      .lean();
+    if (!emotion) throw new Error('Emoção não encontrada.');
+    return buildFocusedContext({ focusedType: 'emotion', recentEmotions: [emotion] });
+  }
   const [memory, dreams, emotions, memoryFacts, coach, timeline, insights, convMemories, activeGoals, completedGoals, qualitySummary, importantRelationships, activeJourneys] = await Promise.all([
     memoryService.getMemory(userId),
     Dream.find({ userId })
@@ -364,14 +434,14 @@ async function deleteConversation(userId, conversationId) {
 }
 
 async function sendChat(userId, question, options = {}) {
-  const { conversationId = null, newConversation = false } = options;
+  const { conversationId = null, newConversation = false, contextType, dreamId, emotionId } = options;
   const model = AI_PROVIDERS.deepseek.primary.model;
   const temperature = 0.4;
   const startTime = Date.now();
 
   const { conversationId: cid, conversationTitle, nextIndex } = await findOrCreateConversation(userId, conversationId, newConversation);
 
-  let context = await buildContext(userId);
+  let context = await buildContext(userId, { contextType, dreamId, emotionId });
   const t1 = Date.now();
   context = selectContext(question, context);
   const t2 = Date.now();
@@ -432,7 +502,23 @@ async function sendChat(userId, question, options = {}) {
 
   const latency = t7 - startTime;
 
-  const effectiveTitle = conversationTitle || (nextIndex === 1 ? getAutoTitle(question) : null);
+  let effectiveTitle = conversationTitle || (nextIndex === 1 ? getAutoTitle(question) : null);
+  let contextLabel = null;
+
+  if (nextIndex === 1 && contextType === 'dream') {
+    const dream = context.recentDreams?.[0];
+    if (dream) {
+      const label = dream.category || getAutoTitle(dream.summary || question);
+      effectiveTitle = `Sonho - ${label}`;
+      contextLabel = label;
+    }
+  } else if (nextIndex === 1 && contextType === 'emotion') {
+    const emotion = context.recentEmotions?.[0];
+    if (emotion) {
+      effectiveTitle = `Emoção - ${emotion.emotion}`;
+      contextLabel = emotion.emotion;
+    }
+  }
 
   await ChatMessage.create({
     userId,
@@ -444,6 +530,10 @@ async function sendChat(userId, question, options = {}) {
     model,
     temperature,
     contextVersion: 'v2',
+    contextType: contextType || 'general',
+    dreamId: dreamId || null,
+    emotionId: emotionId || null,
+    contextLabel,
     latency,
     promptTokens,
     completionTokens,

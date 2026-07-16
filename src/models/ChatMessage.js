@@ -59,6 +59,23 @@ const ChatMessageSchema = new mongoose.Schema({
     type: String,
     default: null,
   },
+  contextType: {
+    type: String,
+    enum: ['general', 'dream', 'emotion'],
+    default: 'general',
+  },
+  dreamId: {
+    type: mongoose.Schema.Types.ObjectId,
+    default: null,
+  },
+  emotionId: {
+    type: mongoose.Schema.Types.ObjectId,
+    default: null,
+  },
+  contextLabel: {
+    type: String,
+    default: null,
+  },
 }, {
   timestamps: true,
 });
