@@ -5,7 +5,6 @@ const { successResponse, errorResponse } = require('../utils/response');
 exports.sendMessage = async (req, res, next) => {
   try {
     const { message, conversationId, newConversation, contextType, dreamId, emotionId } = req.body;
-    console.log('[INVESTIGATION] chatController.sendMessage body=', { message: message?.substring(0, 50), conversationId, newConversation, contextType, dreamId, emotionId, userId: req.userId });
 
     if (!message || !message.trim()) {
       return errorResponse(res, 'A mensagem é obrigatória.', 400);
@@ -27,10 +26,8 @@ exports.sendMessage = async (req, res, next) => {
       emotionId,
     });
 
-    console.log('[INVESTIGATION] chatController.sendChat result=', { answerLength: result.answer?.length, conversationId: result.conversationId });
     successResponse(res, result, 200);
   } catch (error) {
-    console.log('[INVESTIGATION] chatController.sendChat ERROR=', error.message, 'stack=', error.stack?.substring(0, 300));
     next(error);
   }
 };

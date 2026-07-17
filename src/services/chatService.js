@@ -485,7 +485,7 @@ async function sendChat(userId, question, options = {}) {
   const enforced = enforceTokenLimit(context, history);
   history = enforced.history;
 
-  const { messages } = buildChatPrompt(question, context, history, plan, emotionalState, cognitiveContext, initiative, decisions, strategy);
+  const { messages } = buildChatPrompt(question, context, history, plan, emotionalState, cognitiveContext, initiative, decisions, strategy, contextType || 'general');
   const t6 = Date.now();
 
   let answer;
