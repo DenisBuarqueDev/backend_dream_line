@@ -112,6 +112,7 @@ exports.getDashboardData = async (userId, user) => {
         dreamCategory: lastDreamRaw.dreamCategory || 'Outros',
         interpretacao: lastDreamRaw.interpretacao || null,
         createdAt: lastDreamRaw.createdAt,
+        imageUrl: lastDreamRaw.imageUrl || null,
       }
     : null;
 
