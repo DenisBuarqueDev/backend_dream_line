@@ -13,7 +13,7 @@ const PLAN_LIMITS = {
     maxEmotionAnalysesPerDay: 1,
     canDeleteDream: false,
     canDeleteEmotion: false,
-    canUseCorrelations: false,
+    canUseCorrelations: true,
     canUseNotifications: true,
     canUseNumerology: false,
     maxNameNumerologiesPerDay: 1
