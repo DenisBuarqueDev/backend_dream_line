@@ -10,7 +10,7 @@ const PLAN_LIMITS = {
     canSeeWeeklySummary: false,
     canGetFullInterpretation: false,
     maxInterpretationsPerDay: 1,
-    maxEmotionAnalysesPerDay: 3,
+    maxEmotionAnalysesPerDay: 1,
     canDeleteDream: false,
     canDeleteEmotion: false,
     canUseCorrelations: false,
@@ -321,6 +321,14 @@ UserSchema.methods.canAccessFeature = function(feature) {
 };
 
 UserSchema.methods.incrementDreamCount = async function() {
+  const now = new Date();
+  const resetPeriod = 24 * 60 * 60 * 1000;
+
+  if (this.dreamLimitResetAt && now > this.dreamLimitResetAt) {
+    this.dreamCount = 0;
+    this.dreamLimitResetAt = new Date(now.getTime() + resetPeriod);
+  }
+
   const max = this.plan === 'premium' ? PLAN_LIMITS.premium.maxDreams : PLAN_LIMITS.free.maxDreams;
 
   if ((this.dreamCount || 0) >= max) {
