@@ -39,8 +39,18 @@ const createDream = async (req, res, next) => {
     }
 
     const planInfo = user.checkUserPlan();
+    console.log('[DREAM_LIMIT_DEBUG] Before check =>', {
+      userId: req.userId,
+      plan: user.plan,
+      dreamCount: user.dreamCount,
+      remainingDreams: planInfo.remainingDreams,
+      canInterpret: planInfo.canInterpret,
+      dreamLimitResetAt: user.dreamLimitResetAt,
+      serverTime: new Date().toISOString()
+    });
 
     if (!planInfo.canInterpret) {
+      console.log('[DREAM_LIMIT_DEBUG] BLOCKED 403 - canInterpret is false');
       return errorResponse(res, 'Limite de interpretações do plano atingido. Faça upgrade para continuar.', 403);
     }
 
@@ -51,7 +61,12 @@ const createDream = async (req, res, next) => {
       await user.save();
     }
 
-    await user.incrementDreamCount();
+    const incremented = await user.incrementDreamCount();
+    console.log('[DREAM_LIMIT_DEBUG] After increment =>', {
+      incremented,
+      dreamCount: user.dreamCount,
+      plan: user.plan
+    });
 
     let aiResult = { interpretacao: '', categorias: [], padroes: { tematicos: [], espirituais: [], biologicos: [] }, tags: [] };
     let aiData = null;
