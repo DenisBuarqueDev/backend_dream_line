@@ -38,19 +38,24 @@ const createDream = async (req, res, next) => {
       return errorResponse(res, 'Usuário não encontrado', 404);
     }
 
-    const planInfo = user.checkUserPlan();
-    console.log('[DREAM_LIMIT_DEBUG] Before check =>', {
+    console.log('=== [DREAM_LIMIT] ANTES DE checkUserPlan ===', {
       userId: req.userId,
       plan: user.plan,
       dreamCount: user.dreamCount,
-      remainingDreams: planInfo.remainingDreams,
-      canInterpret: planInfo.canInterpret,
       dreamLimitResetAt: user.dreamLimitResetAt,
       serverTime: new Date().toISOString()
     });
 
+    const planInfo = user.checkUserPlan();
+
+    console.log('=== [DREAM_LIMIT] APÓS checkUserPlan ===', {
+      remainingDreams: planInfo.remainingDreams,
+      canInterpret: planInfo.canInterpret,
+      maxDreams: planInfo.maxDreams
+    });
+
     if (!planInfo.canInterpret) {
-      console.log('[DREAM_LIMIT_DEBUG] BLOCKED 403 - canInterpret is false');
+      console.log('=== [DREAM_LIMIT] BLOQUEIO 403 ativado ===');
       return errorResponse(res, 'Limite de interpretações do plano atingido. Faça upgrade para continuar.', 403);
     }
 
@@ -61,11 +66,14 @@ const createDream = async (req, res, next) => {
       await user.save();
     }
 
-    const incremented = await user.incrementDreamCount();
-    console.log('[DREAM_LIMIT_DEBUG] After increment =>', {
-      incremented,
-      dreamCount: user.dreamCount,
-      plan: user.plan
+    await user.incrementDreamCount();
+
+    const freshUser = await User.findById(req.userId);
+    const freshPlan = freshUser.checkUserPlan();
+    console.log('=== [DREAM_LIMIT] APÓS incrementDreamCount (re-buscado do banco) ===', {
+      dreamCount: freshUser.dreamCount,
+      remainingDreams: freshPlan.remainingDreams,
+      canInterpret: freshPlan.canInterpret
     });
 
     let aiResult = { interpretacao: '', categorias: [], padroes: { tematicos: [], espirituais: [], biologicos: [] }, tags: [] };
