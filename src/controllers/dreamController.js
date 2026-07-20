@@ -38,26 +38,7 @@ const createDream = async (req, res, next) => {
       return errorResponse(res, 'Usuário não encontrado', 404);
     }
 
-    console.log('=== [DREAM_LIMIT] ANTES DE checkUserPlan ===', {
-      userId: req.userId,
-      plan: user.plan,
-      dreamCount: user.dreamCount,
-      dreamLimitResetAt: user.dreamLimitResetAt,
-      serverTime: new Date().toISOString()
-    });
-
     const planInfo = user.checkUserPlan();
-
-    console.log('=== [DREAM_LIMIT] APÓS checkUserPlan ===', {
-      remainingDreams: planInfo.remainingDreams,
-      canInterpret: planInfo.canInterpret,
-      maxDreams: planInfo.maxDreams
-    });
-
-    if (!planInfo.canInterpret) {
-      console.log('=== [DREAM_LIMIT] BLOQUEIO 403 ativado ===');
-      return errorResponse(res, 'Limite de interpretações do plano atingido. Faça upgrade para continuar.', 403);
-    }
 
     const wasReset = planInfo.isReset;
     if (wasReset) {
@@ -67,14 +48,6 @@ const createDream = async (req, res, next) => {
     }
 
     await user.incrementDreamCount();
-
-    const freshUser = await User.findById(req.userId);
-    const freshPlan = freshUser.checkUserPlan();
-    console.log('=== [DREAM_LIMIT] APÓS incrementDreamCount (re-buscado do banco) ===', {
-      dreamCount: freshUser.dreamCount,
-      remainingDreams: freshPlan.remainingDreams,
-      canInterpret: freshPlan.canInterpret
-    });
 
     let aiResult = { interpretacao: '', categorias: [], padroes: { tematicos: [], espirituais: [], biologicos: [] }, tags: [] };
     let aiData = null;

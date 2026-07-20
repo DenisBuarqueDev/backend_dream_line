@@ -3,14 +3,14 @@ const bcrypt = require('bcryptjs');
 
 const PLAN_LIMITS = {
   free: {
-    maxDreams: 1,
+    maxDreams: Infinity,
     maxAstralCharts: 1,
     canGenerateImage: false,
     canUseSleepMode: false,
     canSeeWeeklySummary: false,
     canGetFullInterpretation: false,
-    maxInterpretationsPerDay: 1,
-    maxEmotionAnalysesPerDay: 1,
+    maxInterpretationsPerDay: Infinity,
+    maxEmotionAnalysesPerDay: Infinity,
     canDeleteDream: false,
     canDeleteEmotion: false,
     canUseCorrelations: true,
