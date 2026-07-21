@@ -12,6 +12,7 @@ async function processDreamPipeline(dreamText, userContext = {}, options = {}) {
 
   const result = {
     interpretation: '',
+    category: 'Outros',
     categorias: [],
     padroes: { tematicos: [], espirituais: [], biologicos: [] },
     emotions: [],
@@ -31,6 +32,7 @@ async function processDreamPipeline(dreamText, userContext = {}, options = {}) {
 
     Object.assign(result, {
       interpretation: deepseekResult.interpretation || '',
+      category: deepseekResult.category || 'Outros',
       emotions: deepseekResult.emotions || [],
       spiritualMessage: deepseekResult.spiritualMessage || '',
       energy: deepseekResult.energy || '',

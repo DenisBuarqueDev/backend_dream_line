@@ -54,7 +54,15 @@ const DreamSchema = new mongoose.Schema({
   },
   dreamCategory: {
     type: String,
-    enum: ['Perseguição', 'Queda', 'Água', 'Família', 'Trabalho', 'Morte', 'Dinheiro', 'Viagem', 'Relacionamento', 'Outros'],
+    enum: [
+      'Perseguição', 'Queda', 'Água', 'Família', 'Trabalho',
+      'Morte', 'Dinheiro', 'Viagem', 'Relacionamento', 'Animais',
+      'Crianças', 'Casa', 'Escola', 'Veículos', 'Natureza',
+      'Fogo', 'Escuridão', 'Espiritualidade', 'Festa', 'Doença',
+      'Prisão', 'Acidente', 'Sexo', 'Gravidez', 'Casamento',
+      'Separação', 'Amigos', 'Desconhecidos', 'Objetos', 'Tecnologia',
+      'Outros',
+    ],
     default: 'Outros'
   },
   imageUrl: {

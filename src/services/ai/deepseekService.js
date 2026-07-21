@@ -31,9 +31,18 @@ Regras para as tags:
 - Evite tags muito genéricas como "sonho", "noite", "dormir"
 - Distribua entre diferentes tipos quando possível
 
+Classifique obrigatoriamente o sonho utilizando APENAS UMA das categorias abaixo.
+
+Categorias válidas:
+Perseguição, Queda, Água, Família, Trabalho, Morte, Dinheiro, Viagem, Relacionamento, Animais, Crianças, Casa, Escola, Veículos, Natureza, Fogo, Escuridão, Espiritualidade, Festa, Doença, Prisão, Acidente, Sexo, Gravidez, Casamento, Separação, Amigos, Desconhecidos, Objetos, Tecnologia, Outros
+
+Nunca utilize sinônimos. Nunca invente categorias. Nunca explique.
+Retorne exatamente um dos nomes acima no campo "category".
+
 Formato da resposta (JSON):
 {
   "interpretation": "texto da interpretação",
+  "category": "categoria do sonho",
   "emotions": ["emoção1", "emoção2"],
   "spiritualMessage": "mensagem espiritual curta",
   "energy": "energia predominante (ex: Transformação, Cura, Expansão)",
@@ -172,6 +181,7 @@ async function interpretDream(dreamText, userContext = {}) {
 
     return {
       interpretation: result.interpretation || '',
+      category: result.category || 'Outros',
       emotions: result.emotions || [],
       spiritualMessage: result.spiritualMessage || '',
       energy: result.energy || 'Neutra',

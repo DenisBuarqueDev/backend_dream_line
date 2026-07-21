@@ -47,7 +47,7 @@ exports.getDashboardData = async (userId, user) => {
 
   const lastDreamRaw = await Dream.findOne({ userId })
     .sort({ createdAt: -1 })
-    .select('textoSonho dreamCategory interpretacao createdAt')
+    .select('textoSonho dreamCategory interpretacao imageUrl createdAt')
     .lean();
 
   let avgSleepHours = null;

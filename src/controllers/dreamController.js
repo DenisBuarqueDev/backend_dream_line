@@ -7,6 +7,7 @@ const { checkFeatureAccess } = require('../middleware/planMiddleware');
 const aiGateway = require('../services/ai/aiGatewayService');
 const cloudinaryService = require('../services/cloudinaryService');
 const memoryService = require('../services/memoryService');
+const { DREAM_CATEGORIES } = require('../services/dreamCategorizationService');
 
 const calculateDuration = (horaDormir, horaAcordar) => {
   const parseTime = (time) => {
@@ -49,7 +50,7 @@ const createDream = async (req, res, next) => {
 
     await user.incrementDreamCount();
 
-    let aiResult = { interpretacao: '', categorias: [], padroes: { tematicos: [], espirituais: [], biologicos: [] }, tags: [] };
+    let aiResult = { interpretacao: '', category: 'Outros', categorias: [], padroes: { tematicos: [], espirituais: [], biologicos: [] }, tags: [] };
     let aiData = null;
 
     const astralChart = await AstralChart.findOne({ userId: req.userId })
@@ -66,6 +67,7 @@ const createDream = async (req, res, next) => {
       });
 
       aiResult.interpretacao = pipelineResult.interpretation;
+      aiResult.category = pipelineResult.category;
       aiResult.categorias = pipelineResult.categorias;
       aiResult.padroes = pipelineResult.padroes;
 
@@ -90,6 +92,9 @@ const createDream = async (req, res, next) => {
       userId: req.userId,
       textoSonho,
       interpretacao: interpretacao || aiResult.interpretacao,
+      dreamCategory: DREAM_CATEGORIES.includes(aiResult.category)
+        ? aiResult.category
+        : 'Outros',
       categorias: categorias || aiResult.categorias,
       tags: aiResult.tags || [],
       padroes: padroes || aiResult.padroes,
@@ -390,6 +395,9 @@ const reinterpretDream = async (req, res, next) => {
     }
 
     dream.interpretacao = pipelineResult.interpretation;
+    dream.dreamCategory = DREAM_CATEGORIES.includes(pipelineResult.category)
+      ? pipelineResult.category
+      : 'Outros';
     dream.categorias = pipelineResult.categorias;
     dream.tags = pipelineResult.tags || [];
     dream.padroes = {
