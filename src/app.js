@@ -40,7 +40,7 @@ app.use('/api/payments/webhook', (req, _res, next) => {
 
 securityMiddleware(app);
 
-app.use(express.json({ limit: '10kb' }));
+app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
 if (!process.env.JWT_SECRET) {
