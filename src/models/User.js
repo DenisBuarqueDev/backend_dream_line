@@ -37,6 +37,14 @@ const PLAN_LIMITS = {
 };
 
 const UserSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    default: ''
+  },
+  nickname: {
+    type: String,
+    default: ''
+  },
   email: {
     type: String,
     required: true,
@@ -48,6 +56,26 @@ const UserSchema = new mongoose.Schema({
     type: String,
     required: true,
     minlength: 6
+  },
+  birthDate: {
+    type: String,
+    default: ''
+  },
+  birthTime: {
+    type: String,
+    default: ''
+  },
+  birthCity: {
+    type: String,
+    default: ''
+  },
+  avatar: {
+    type: String,
+    default: null
+  },
+  avatarPublicId: {
+    type: String,
+    default: null
   },
   plan: {
     type: String,
